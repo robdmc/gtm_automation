@@ -14,6 +14,7 @@ app = Rocketry()
 
 class ObjectSnapper:
     DATA_DIR = os.path.realpath(os.path.expanduser('~/data/gtm_snapshots'))
+
     def __init__(self, kind, use_cache=False):
         """
         This class does the file management for putting snapshot dataframes
@@ -25,25 +26,25 @@ class ObjectSnapper:
             'account': gtm.AccountLoader,
             'order': gtm.OrderProducts,
         }
-        
+
         allowed_kinds = sorted(loading_mapper.keys())
         if kind not in allowed_kinds:
             raise ValueError(f'{kind} not in {allowed_kinds}')
-            
+
         self.loader = loading_mapper[kind]()
         if use_cache:
             self.loader.enable_pickle_cache()
         else:
             self.loader.disable_pickle_cache()
-            
+
     @property
     def df(self):
         return self.loader.df_raw
-            
+
     @property
     def directory(self):
         return os.path.join(self.DATA_DIR, str(datetime.datetime.now().date()))
-    
+
     @property
     def file_name(self):
         return {
@@ -51,24 +52,22 @@ class ObjectSnapper:
             'account': 'accounts.csv',
             'order': 'orders.csv',
         }[self.kind]
-    
+
     @property
     def file_path(self):
         return os.path.join(self.directory, self.file_name)
-    
+
     def _ensure_directory(self):
         os.makedirs(self.directory, exist_ok=True)
-        
+
     def _create_file(self):
         df = self.df
         df.insert(0, 'snapshot_date', datetime.datetime.now().date())
         df.to_csv(self.file_path, index=False)
-        
+
     def run(self):
         self._ensure_directory()
         self._create_file()
-
-
 
 
 def snap():
@@ -80,10 +79,10 @@ def snap():
 
     # This is the day we are snapshotting on
     today = str(datetime.datetime.now().date())
-    
+
     # Loop over all names
     for object_name in object_names:
-        # When running in daemon mode, you don't want to barf on error, just 
+        # When running in daemon mode, you don't want to barf on error, just
         # write errors to log
         try:
             # Run the snapper and tell the log about it
@@ -95,7 +94,6 @@ def snap():
             logger.exception(f'date: {today} error for: {object_name}\n')
 
 
-
 @app.task('every 6 hours')
 def snap_runner():
     """
@@ -103,8 +101,13 @@ def snap_runner():
     """
     snap()
 
+
 @click.command()
-@click.option('-d', '--daemon', default=False, is_flag=True, help='Run in daemon mode with scheduled downloads')
+@click.option(
+    '-d', '--daemon',
+    default=False,
+    is_flag=True,
+    help='Run in daemon mode with scheduled downloads')
 def main(daemon):
     """
     Handle the cli arguments and run in the appropriate mode
