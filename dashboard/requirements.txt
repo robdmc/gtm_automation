@@ -10,9 +10,9 @@ holoviews[recommended]
 hvplot
 jinjasql
 pdbpp
-
-
+gtmarket
 jupyter
+simple-salesforce
 
 
 

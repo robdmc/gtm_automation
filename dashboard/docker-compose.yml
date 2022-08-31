@@ -11,12 +11,12 @@ services:
       - "8501:8501"
     command: >
       bash -c "source /run/secrets/app_secrets && bash"
-  dapp:
+  app:
     <<: *base
     ports:
       - "8501:8501"
     command: >
-      bash -c "source /run/secrets/app_secrets && streamlit hello"
+      bash -c "source /run/secrets/app_secrets && streamlit run Summary.py"
 
   jupyter:
     <<: *base
@@ -34,6 +34,10 @@ services:
 secrets:
   app_secrets:
     file: ./secrets.sh
+
+
+# Run this to kill all build images
+# docker images | grep dashboard_ | awk '{print $3}' | xargs docker rmi
 
 
 
