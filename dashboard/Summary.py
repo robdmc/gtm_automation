@@ -2,6 +2,7 @@ import streamlit as st
 # from streamlit import caching
 import gtmarket as gtm
 import pandas as pd
+import numpy as np
 import fleming
 import datetime
 import copy
@@ -13,18 +14,57 @@ import holoviews as hv
 import datetime
 import itertools
 
+import dash_lib as dl
 from dash_lib import (
-    get_forecast_frames,
-    get_sales_progress_frames,
+#     get_forecast_frames,
+#     get_sales_progress_frames,
     convert_dataframe,
-    get_arr_timeseries,
+#     get_arr_timeseries,
     float_to_dollars,
     to_dollars,
     display,
-    get_arr_timeseries,
+#     get_arr_timeseries,
     plot_frame,
-    get_when,
+#     get_when,
 )
+
+
+
+@st.cache
+def get_arr_timeseries():
+    df = dl.DashData().get_latest('arr_time_series')
+    df.loc[:, 'date'] = df.date.astype(np.datetime64)
+    df = df.set_index('date')
+    return df
+
+
+@st.cache
+def get_sales_progress_frames():
+    df = dl.DashData().get_latest('sales_progress')
+    df = df.set_index('index')
+    df.index.name = 'Market Segment'
+    df_pretty = df.copy()
+    for col in df_pretty.columns:
+        df_pretty.loc[:, col] = to_dollars(df_pretty.loc[:, col])
+    # df = df.astype(int)
+    # df.loc[:, 'date'] = df.date.astype(np.datetime64)
+    # df = df.set_index('date')
+    return df, df_pretty
+
+
+
+@st.cache
+def get_process_stats_frames():
+    dd = dl.DashData()
+    df_sales = dd.get_latest('sales_stats')
+    df_stage_wr = dd.get_latest('sales_stats_stage_win_rate')
+    df_arr = dd.get_latest('sales_stats_arr')
+
+    df_sales = df_sales.set_index('index')
+    df_stage_wr = df_stage_wr.set_index('index')
+    df_arr = df_arr.set_index('index')
+    return df_sales, df_stage_wr, df_arr
+
 
 
 
@@ -33,14 +73,10 @@ def plot_arr_timeseries():
     ending_exclusive = pd.Timestamp('1/1/2023')
     ending_inclusive = ending_exclusive - relativedelta(days=1)
 
-    df = get_arr_timeseries(get_when()) / 1e6
+    df = get_arr_timeseries() / 1e6
 
     df_past = df.loc[:today]
     df_future = df.loc[today:]
-    # dfh = self.get_prediction_history_frame()
-    # new_hist_ind = pd.date_range(dfh.index[0], ending_inclusive, name='date')
-    # dfh = dfh.reindex(new_hist_ind)
-    # dfh = dfh.fillna(method='ffill')
 
     c1 = plot_frame(df_past, alpha=1, use_label=False, units='m', include_total=False, ylabel='ARR')
     c2 = plot_frame(df_future, alpha=.5, use_label=True, units='m', include_total=True, ylabel='ARR')
@@ -50,12 +86,14 @@ def plot_arr_timeseries():
 
 
     
-dfprog, dfprod_download =  get_sales_progress_frames(get_when())        
+dfprog_download, dfprog =  get_sales_progress_frames()        
+# dfprog, dfprod_download =  get_sales_progress_frames(get_when())        
 
-# The "when" argument dictates when the cache automatically resets
-df_sales, df_stage_wr, df_arr = get_forecast_frames(get_when())
+# # The "when" argument dictates when the cache automatically resets
+df_sales, df_stage_wr, df_arr = get_process_stats_frames()
 
-dfarr = get_arr_timeseries(get_when())
+dfarr = get_arr_timeseries()
+
 
 expected_arr = dfarr.iloc[-1].sum().round()
 expected_arr = float_to_dollars(expected_arr) 
@@ -64,7 +102,7 @@ st.title('GTM Summary Statistics')
 
 st.markdown('---')
 st.markdown(f'## 12/31/22 ARR forecast: {expected_arr}')
-
+# st.write(dfarr)
 
 
 
@@ -97,7 +135,7 @@ st.table(dfprog)
 
 st.download_button(
     label='Download CSV',
-    data=convert_dataframe(dfprog),
+    data=convert_dataframe(dfprog_download),
     file_name='sales_progress.csv',
     mime='text/csv',
 )

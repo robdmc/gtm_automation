@@ -1,5 +1,4 @@
-from asyncore import read
-from tkinter import Scale
+import io
 import streamlit as st
 # from streamlit import caching
 import gtmarket as gtm
@@ -510,7 +509,8 @@ class CSExpansion:
     @ezr.cached_container
     def expansion_rate(self):
         # This gets the average expansion rate for existing contracted mrr
-        dfx = get_ndr_metrics(get_when())
+        # dfx = get_ndr_metrics(get_when())
+        dfx = NDRGetter().df_metrics
         dfx = dfx[dfx.variable == 'expanded_pct']
         dfx = dfx.pivot(index='date', columns='market_segment', values='value')
         then = fleming.floor(datetime.datetime.now(), day=1) - relativedelta(years=1)
@@ -655,7 +655,8 @@ class ARRGetter:
         
         # Use the cs plotter to get average of last 30 days of NDR
         # dfm = self.cs_plotter.df_metrics
-        dfm = get_ndr_metrics(get_when())
+        # dfm = get_ndr_metrics(get_when())
+        dfm = NDRGetter().df_metrics
         
         
         # Based on yearly NDR, compute an exponential time constant for each segment
@@ -737,11 +738,13 @@ class ARRGetter:
         
     @ezr.cached_container
     def df(self):
+        # import pdb; pdb.set_trace()
         dfc = self.df_arr_history
         dfn = self.df_new_biz
         dfn = dfn.reindex(dfc.index).fillna(0)
         
-        dfx = get_cs_expansion_metrics(get_when(), self.today, self.ending_exclusive)
+
+        dfx = CSExpansion(today=self.today, ending_exclusive=self.ending_exclusive).df_cs_expansion_forecast
         dfx = dfx.loc[dfx.index[0]:dfx.index[-1]]
         dfx = dfx.reindex(dfc.index).fillna(0)
         
@@ -751,4 +754,108 @@ class ARRGetter:
 @st.cache
 def get_arr_timeseries(when, starting=None, ending_exclusive=None):
     return ARRGetter(starting=starting, ending_exclusive=ending_exclusive).df
+
+
+
+class DashData:
+    def __init__(self, use_pg=False):
+        sqlite_file='/tmp/dash_play.sqlite'
+        if use_pg:
+            1/0
+            self.mm = ezr.MiniModelPG(overwrite=False, read_only=False)
+        else:
+            self.mm = ezr.MiniModelSqlite(file_name=sqlite_file, overwrite=False, read_only=False)
+
+        self.methods = [
+            'process_arr_time_series',
+            'process_sales_progress',
+            'process_sales_timeseries',
+            'process_process_stats',
+        ]
+
+    def run(self):
+        for method in self.methods:
+            getattr(self, method)()
+
+    def _save_frame(self, name, df, save_index=True):
+        if save_index:
+            df = df.reset_index(drop=False)
+        data = df.to_csv(index=False)
+        date = fleming.floor(datetime.datetime.now(), day=1)
+        dfs = pd.DataFrame([{'date': date, 'data': data}])
+        self.mm.upsert(name, ['date'], dfs)
+
+    def process_arr_time_series(self):
+        df =  ARRGetter(starting=None, ending_exclusive=None).df
+        print(df.head().to_string())
+        self._save_frame('arr_time_series', df)
+
+    def process_sales_progress(self):
+        today = fleming.floor(datetime.datetime.now(), day=1)
+        ending_exclusive = '1/1/2023'
+        since = '1/1/2022'
+
+        pg = PredictorGetter()
+
+        dfw, dff, _ = pg.get_plot_frames(since=since, today=today, ending_exclusive=ending_exclusive, units='u')
+        dfx = pd.DataFrame({
+            'won': dfw.iloc[-1],
+            'remaining': dff.iloc[-1],
+        }).T
+        dfx['total'] = dfx.sum(axis=1)
+        dfx = dfx.T
+        dfx['total'] = dfx.sum(axis=1)
+        dfx.columns.name = '2022 sales'
+
+        dfx = dfx.round()
+
+        self._save_frame('sales_progress', dfx)
+
+    def process_sales_timeseries(self):
+        pg = PredictorGetter()
+        df_won, df_forecast, df_pred_hist = pg.get_plot_frames(since='1/1/2022', ending_exclusive='1/1/2023', units='u')
+        self._save_frame('sales_won_timeseries', df_won)
+        self._save_frame('sales_forecast_timeseries', df_forecast)
+        self._save_frame('sales_prediction_history', df_pred_hist)
+
+    def process_process_stats(self):
+        bp = BlobPrinter()
+        df_sales, df_stage_win_rate, df_arr = bp.get_frames()
+
+        self._save_frame('sales_stats', df_sales)
+        self._save_frame('sales_stats_stage_win_rate', df_stage_win_rate)
+        self._save_frame('sales_stats_arr', df_arr)
+
+
+
+
+    def process_arr_timeseries(self):
+        pass
+
+
+    def get_latest(self, name):
+        if name not in self.mm.table_names:
+            raise ValueError(f'{name} not in {self.mm.table_names}')
+
+        df = self.mm.query(f"""
+        SELECT
+            data
+        FROM
+            {name}
+        ORDER BY 
+            date DESC
+        LIMIT 1
+        """)
+        data = df.data.iloc[0]
+        dfo = pd.read_csv(io.StringIO(data))
+        return dfo
+
+
+
+
+# #######################################3
+# df = get_arr_timeseries(get_when()) / 1e6
+# dfprog, dfprod_download =  get_sales_progress_frames(get_when())        
+# df_sales, df_stage_wr, df_arr = get_forecast_frames(get_when())
+# dfw, dff, dfh = get_plotting_frames(when)
 
