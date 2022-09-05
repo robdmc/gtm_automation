@@ -9,14 +9,15 @@ import itertools
 import holoviews as hv
 from holoviews import opts
 import copy
-from dash_lib import PredictorGetter
+from dash_lib import DashData, PredictorGetter
 import easier as ezr
 import locale
 from dash_lib import (
     display,
     plot_frame,
-    get_prediction_history,
     get_when,
+    to_dollars,
+    DashData,
 )
 hv.extension('bokeh')
 
@@ -25,129 +26,19 @@ opts.defaults(opts.Area(width=800, height=400), tools=[])
 opts.defaults(opts.Curve(width=800, height=400, tools=['hover']))
 
 
-
-# class PredictorGetter:
-#     def __init__(self, pipe_stats_obj=None, include_sales_expansion=True):
-#         if pipe_stats_obj is None:
-#             pipe_stats_obj = gtm.PipeStats()
-#         self.ps = pipe_stats_obj
-#         self.include_sales_expansion = include_sales_expansion
-        
-#     def get_predicted_revenue(self, starting=None, ending_exclusive=None):
-#         if starting is None:
-#             starting = datetime.datetime.now()
-            
-#         starting = pd.Timestamp(starting)
-#         starting = fleming.floor(starting, day=1)        
-#         if ending_exclusive is None:
-#             ending_exclusive = starting + relativedelta(years=1)
-#         ending_exclusive = pd.Timestamp(ending_exclusive)
-#         deals = gtm.Deals(starting=starting, ending_exclusive=ending_exclusive, include_sales_expansion=self.include_sales_expansion)
-#         return deals.df_predicted
-    
-#     @ezr.cached_container
-#     def _df_won(self):
-#         ps = gtm.PipeStats(pilots_are_new_biz=True, sales_expansion_are_new_biz=self.include_sales_expansion)
-#         df = ps.get_opp_timeseries(value='deal_acv', cumulative_since='12/31/2020')
-#         return df
-        
-#     def get_won_revenue(self, starting=None, ending_inclusive=None):
-#         today = fleming.floor(datetime.datetime.now(), day=1)
-#         if ending_inclusive is None:
-#             ending_inclusive = today
-#         if starting is None:
-#             starting = fleming.floor(today, year=1)
-#         starting = pd.Timestamp(starting)
-#         ending_inclusive = pd.Timestamp(ending_inclusive)
-#         if starting < pd.Timestamp('1/1/2020'):
-#             raise ValueError('Can only get revenue since 1/1/2020')
-        
-#         df = self._df_won
-#         df = df.loc[starting - relativedelta(days=1):ending_inclusive, :].sort_index()
-#         df = df - df.iloc[0, :]
-#         df = df.loc[starting:ending_inclusive, :]
-#         ind = pd.date_range(starting, ending_inclusive)
-#         df = df.reindex(index=ind)
-#         df = df.fillna(method='ffill')
-#         return df
-    
-#     def get_forecast(self, since=None, today=None, ending_exclusive=None, separate_past_future=False):
-#         if today is None:
-#             today = fleming.floor(datetime.datetime.now(), day=1)
-#         if since is None:
-#             since = fleming.floor(today, year=1)
-#         if ending_exclusive is None:
-#             ending_exclusive = today + relativedelta(years=1)
-            
-#         since, today, ending_exclusive = map(pd.Timestamp, [since, today, ending_exclusive])
-#         tomorrow = today + relativedelta(days=1)
-            
-        
-#         dfw = self.get_won_revenue(starting=since, ending_inclusive=today)
-#         dff = self.get_predicted_revenue(starting=tomorrow, ending_exclusive=ending_exclusive)
-#         dff = dff + dfw.iloc[-1, :]
-        
-#         dfw = dfw.loc[since:ending_exclusive, :]
-#         dff = dff.loc[since:ending_exclusive, :]
-        
-#         if separate_past_future:
-#             return dfw, dff
-#         else:
-#             df = pd.concat([dfw, dff], axis=0)
-#             return df
-        
-#     def get_prediction_history(self, since=None, ending_exclusive=None,  units='m'):
-#         mph = gtm.ModelParamsHist()
-#         df = mph.get_history()
-#         min_time, max_time = [fleming.floor(d, day=1) for d in [df.time.min(), df.time.max()]]
-        
-#         dates = pd.date_range(min_time, max_time)
-#         predictions = []
-#         for today in dates:
-#             dfw, dff = self.get_plot_frames_for_span(since=since, today=today, ending_exclusive=ending_exclusive, units=units)
-#             predictions.append(dff.iloc[-1, :].sum())
-            
-#         dfp = pd.DataFrame({'acv': predictions}, index=dates)
-#         ind = pd.date_range(dfp.index[0], ending_exclusive, inclusive='left')
-#         dfp = dfp.reindex(ind).fillna(method='ffill')
-#         return dfp
-
-#     def get_plot_frames_for_span(self, since=None, today=None, ending_exclusive=None, units='m'):
-#         units = units.lower()
-            
-#         units_lookup = {
-#             'k': 1000,
-#             'm': 1e6
-#         }
-        
-#         scale = units_lookup[units]
-        
-#         dfw, dff = self.get_forecast(since=since, today=today, ending_exclusive=ending_exclusive, separate_past_future=True)
-#         if not dff.empty:
-#             dfft = dff.T
-#             dfft.loc[:, dfw.index[-1]] = dfw.iloc[-1, :]
-#             dff = dfft.T.sort_index()
-        
-#         dff = dff / scale
-#         dfw = dfw /  scale
-
-#         # dfh = self.get_prediction_history(since=since, ending_exclusive=ending_exclusive, units=units)
-#         return dfw, dff#, dfh
-
-    
-#     def get_plot_frames(self, since=None, today=None, ending_exclusive=None, units='m'):
-#         dfw, dff = self.get_forecast(since=since, today=today, ending_exclusive=ending_exclusive, separate_past_future=True)
-#         dfh = self.get_prediction_history(since=since, ending_exclusive=ending_exclusive, units=units)
-#         return dfw, dff, dfh
-        
-
-
 class PredictorPlotter:
     def __init__(self, dfw, dff, dfh, units='m'):
-        self.dfw = dfw
-        self.dff = dff
-        self.dfh = dfh
-        self.units = units
+        units_lookup = {
+            'k': 1000,
+            'm': 1e6,
+            'u': 1,
+        }
+        self.units = units.lower()
+        scale = units_lookup[self.units]
+
+        self.dfw = dfw / scale
+        self.dff = dff / scale
+        self.dfh = dfh / scale
         
     
     def plot_latest_prediction(self):
@@ -173,8 +64,36 @@ class PredictorPlotter:
 
 @st.cache
 def get_plotting_frames(when):
-    pg = PredictorGetter()
-    return pg.get_plot_frames(since='1/1/2022', ending_exclusive='1/1/2023', units='m')
+    dd = DashData()
+    dfw = dd.get_latest('sales_won_timeseries')
+    dff = dd.get_latest('sales_forecast_timeseries')
+    dfh = dd.get_latest('sales_prediction_history')
+    
+        
+
+    def clean_it(df):
+        df = df.rename(columns={'index': 'date'})
+        df.loc[:, 'date'] = df.loc[:, 'date'].astype(np.datetime64)
+        df = df.set_index('date')
+        return df
+
+    dfw = clean_it(dfw)
+    dff = clean_it(dff)
+    dfh = clean_it(dfh)
+
+    # dfw = dfw.rename(columnns={'index': 'date'})
+    # dff = dff.rename(columnns={'index': 'date'})
+    # dfh = dfh.rename(columnns={'index': 'date'})
+
+    # dfw.loc[:, 'date'] = dfw.loc[:, 'date'].astype(np.datetime64)
+    # # st.write(dff.head())
+    # # st.write(dfh.head())
+
+    # # dfw = dfw.set_index('index')
+    # st.write(dfw.head())
+    # dff = dff.set_index('date')
+    # dfh = dfh.set_index('index')
+    return dfw, dff, dfh
 
 
 def plot_prediction(dfw, dff, dfh):
@@ -183,8 +102,6 @@ def plot_prediction(dfw, dff, dfh):
 
     display(c)
 
-def to_dollars(ser):
-    return [locale.currency(x, grouping=True).split('.')[0] for x in ser]
 
 @st.cache
 def convert_dataframe(df):
@@ -197,6 +114,13 @@ def convert_dataframe(df):
 
 
 st.title('Sales Forecast Trend')
+@st.cache
+def get_latest_date(when):
+    return DashData().get_latest_time()
+
+as_of = get_latest_date(get_when())
+as_of = as_of.strftime("%B %d, %Y")
+st.markdown(f'### as of {as_of}')
 
 
 # dfh = get_prediction_history(get_when())

@@ -60,9 +60,6 @@ def get_process_stats_frames(when):
     return df_sales, df_stage_wr, df_arr
 
 
-@st.cache
-def get_latest_date(when):
-    return DashData().get_latest_time()
 
 
 def plot_arr_timeseries():
@@ -94,8 +91,14 @@ expected_arr = dfarr.iloc[-1].sum().round()
 expected_arr = float_to_dollars(expected_arr) 
 
 st.title('GTM Summary Statistics')
+
+@st.cache
+def get_latest_date(when):
+    return DashData().get_latest_time()
+
 as_of = get_latest_date(get_when())
 as_of = as_of.strftime("%B %d, %Y")
+
 st.markdown(f'### as of {as_of}')
 
 st.markdown('---')

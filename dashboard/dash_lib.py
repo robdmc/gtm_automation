@@ -23,6 +23,7 @@ opts.defaults(opts.Curve(width=800, height=400, tools=['hover']))
 
 USE_PG=True
 
+
 def get_when():
     return fleming.floor(datetime.datetime.now(), hour=1)
 
