@@ -39,7 +39,6 @@ def to_dollars(ser):
 def to_percent(ser):
     return ['-' if x == '-' else f'{x}%' for x in ser]
 
-@st.cache
 def convert_dataframe(df):
     return df.to_csv().encode('utf-8')
 
@@ -189,137 +188,21 @@ class BlobPrinter():
         return df_sales, dfswr, df_arr
 
 
-# class MiniModelCache:
-#     def __init__(self, sqlite_file='/tmp/minimodel_cache.sqlite', use_pg=False, stale_seconds=3600):
-#         if use_pg:
-#             self.mm = ezr.MiniModelSqlite(file_name=sqlite_file, overwrite=False, read_only=False)
-#         else:
-#             self.mm = ezr.MiniModelPG(overwrite=False, read_only=False)
-#         self.stale_seconds = stale_seconds
-
-#         self.functions = {}
-
-#     def set_last_run(self):
-#         df = pd.DataFrame([{'time': datetime.datetime.now()}])
-#         self.mm.create('mm_cache_last_run', df)
-
-#     def get_last_run(self):
-#         if 'mm_cache_last_run' in self.mm.table_names:
-#             return self.mm.tables.mm_cache_last_run.df.time.iloc[0]
-#         else:
-#             return datetime.datetime(2000, 1, 1)
-
-#     @property
-#     def needs_rerun(self):
-#         now = datetime.datetime.now()
-#         last_run = self.get_last_run()
-#         elapsed_seconds = (now - last_run).total_seconds()
-#         return elapsed_seconds > self.stale_seconds
-
-#     def register(self, name, func):
-#         self.functions[name] = func
-
-#     def recompute(self):
-#         for name, func in self.functions.items():
-#             df = func()
-#             self.mm.create(name, df)
-#         self.set_last_run()
-
-#     def get(self, name):
-#         if self.needs_rerun:
-#             self.recompute()
-    
-#         if name not in self.mm.table_names:
-#             func = self.functions[name]
-#             df = func()
-#             self.mm.create(name, df)
-#             self.set_last_run()
-
-#         return getattr(self.mm.tables, name).df
-
-
-
-"""
-OKAY.  I'M RUNNING OUT OF STEAM HERE.
-
-
-I'M TRYING TO FIGURE OUT IF THIS MINIMODELCACHE ABSRACTION IS ANY GOOD FOR MY
-STREAMLIT FUNCTIONS.
-
-THE BASIC IDEA IS TO ADD ANOTHER LAYER OF CACHING.
-STREAMLIT HAS A REALLY FAST CACHE
-THEN THERE IS A DATABASE CACHE OF RESULTS THAT CAN MAYBE BE REFRESHED ON A CRON JOB
-THAT WAY WHEN STREAMLIT IS RUN, IT'LL ALWAYS PULL FROM THE DB CACHE
-AND DATA CAN HAVE UP TO SAY AN HOUR LATENCY
-"""
-
-    
-
-def _get_forecast_frames():
-    bp = BlobPrinter()
-    return bp.get_frames()
-
-
-
-@st.cache
-def get_forecast_frames(when):
-    """
-    when is only used to invalidate cache
-    """
-    mmc = MiniModelCache()
-    mmc.register('get_forecast_frames', _get_forecast_frames)
-    bp = BlobPrinter()
-    return bp.get_frames()
-
-
-
-# @st.cache
-# def get_forecast_frames(when):
-#     """
-#     when is only used to invalidate cache
-#     """
+# def _get_forecast_frames():
 #     bp = BlobPrinter()
 #     return bp.get_frames()
 
 
-@st.cache
-def get_sales_progress_frames(when):
-    today = fleming.floor(datetime.datetime.now(), day=1)
-    tomorrow = today + relativedelta(days=1)
-    ending_exclusive = '1/1/2023'
-    since = '1/1/2022'
 
-    pg = PredictorGetter()
+# def get_prediction_history(when):
+#     today = fleming.floor(datetime.datetime.now(), day=1)
+#     ending_exclusive = '1/1/2023'
+#     since = '1/1/2022'
 
-    dfw, dff, _ = pg.get_plot_frames(since=since, today=today, ending_exclusive=ending_exclusive, units='m')
-    # dff = pg.get_predicted_revenue(starting=tomorrow, ending_exclusive=ending_exclusive)
-    # dfw = pg.get_won_revenue(starting=since, ending_inclusive=today)
+#     pg = PredictorGetter()
 
-    # dfw, dff = pp._get_plot_frames(since='1/1/2022', today='6/23/2022', ending_exclusive='1/1/2023', units='m')
-    # dff.hvplot()
-    dfx = pd.DataFrame({
-        'won': dfw.iloc[-1],
-        'remaining': dff.iloc[-1],
-    }).T
-    dfx['total'] = dfx.sum(axis=1)
-    dfx = dfx.T
-    dfx['total'] = dfx.sum(axis=1)
-    dfx.columns.name = '2022 sales'
-    dfx = dfx.round().astype(int)
-    dfxd = dfx.copy()
-    for col in dfx.columns:
-        dfx.loc[:, col] = to_dollars(dfx.loc[:, col])
-    return dfx, dfxd
-
-def get_prediction_history(when):
-    today = fleming.floor(datetime.datetime.now(), day=1)
-    ending_exclusive = '1/1/2023'
-    since = '1/1/2022'
-
-    pg = PredictorGetter()
-
-    dfh = pg.get_prediction_history(since=since, ending_exclusive=ending_exclusive,  units='m')
-    return dfh
+#     dfh = pg.get_prediction_history(since=since, ending_exclusive=ending_exclusive,  units='m')
+#     return dfh
 
 
 class PredictorGetter:
@@ -407,8 +290,6 @@ class PredictorGetter:
         return df
         
     def get_prediction_history(self, since=None, ending_exclusive=None,  units='m'):
-        # mph = gtm.ModelParamsHist(use_pg=USE_PG)
-        # df = mph.get_history()
         df = self.df_model_param_history
         min_time, max_time = [fleming.floor(d, day=1) for d in [df.time.min(), df.time.max()]]
         
@@ -850,12 +731,16 @@ class DashData:
         dfo = pd.read_csv(io.StringIO(data))
         return dfo
 
-
-
-
-# #######################################3
-# df = get_arr_timeseries(get_when()) / 1e6
-# dfprog, dfprod_download =  get_sales_progress_frames(get_when())        
-# df_sales, df_stage_wr, df_arr = get_forecast_frames(get_when())
-# dfw, dff, dfh = get_plotting_frames(when)
-
+    def get_latest_time(self):
+        name = 'sales_won_timeseries'
+        df = self.mm.query(f"""
+        SELECT
+            date
+        FROM
+            {name}
+        ORDER BY 
+            date DESC
+        LIMIT 1
+        """)
+        date = pd.Timestamp(df.date.iloc[0]).date()
+        return date

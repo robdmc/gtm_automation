@@ -16,17 +16,19 @@ import itertools
 
 import dash_lib as dl
 from dash_lib import (
+    DashData,
     convert_dataframe,
     float_to_dollars,
     to_dollars,
     display,
     plot_frame,
+    get_when,
 )
 
 
 
 @st.cache
-def get_arr_timeseries():
+def get_arr_timeseries(when):
     df = dl.DashData().get_latest('arr_time_series')
     df.loc[:, 'date'] = df.date.astype(np.datetime64)
     df = df.set_index('date')
@@ -34,7 +36,7 @@ def get_arr_timeseries():
 
 
 @st.cache
-def get_sales_progress_frames():
+def get_sales_progress_frames(when):
     df = dl.DashData().get_latest('sales_progress')
     df = df.set_index('index')
     df.index.name = 'Market Segment'
@@ -46,7 +48,7 @@ def get_sales_progress_frames():
 
 
 @st.cache
-def get_process_stats_frames():
+def get_process_stats_frames(when):
     dd = dl.DashData()
     df_sales = dd.get_latest('sales_stats')
     df_stage_wr = dd.get_latest('sales_stats_stage_win_rate')
@@ -58,6 +60,9 @@ def get_process_stats_frames():
     return df_sales, df_stage_wr, df_arr
 
 
+@st.cache
+def get_latest_date(when):
+    return DashData().get_latest_time()
 
 
 def plot_arr_timeseries():
@@ -65,7 +70,7 @@ def plot_arr_timeseries():
     ending_exclusive = pd.Timestamp('1/1/2023')
     ending_inclusive = ending_exclusive - relativedelta(days=1)
 
-    df = get_arr_timeseries() / 1e6
+    df = get_arr_timeseries(get_when()) / 1e6
 
     df_past = df.loc[:today]
     df_future = df.loc[today:]
@@ -78,17 +83,20 @@ def plot_arr_timeseries():
 
 
     
-dfprog_download, dfprog =  get_sales_progress_frames()        
+dfprog_download, dfprog =  get_sales_progress_frames(get_when())        
 
 # # The "when" argument dictates when the cache automatically resets
-df_sales, df_stage_wr, df_arr = get_process_stats_frames()
-dfarr = get_arr_timeseries()
+df_sales, df_stage_wr, df_arr = get_process_stats_frames(get_when())
+dfarr = get_arr_timeseries(get_when())
 
 
 expected_arr = dfarr.iloc[-1].sum().round()
 expected_arr = float_to_dollars(expected_arr) 
 
 st.title('GTM Summary Statistics')
+as_of = get_latest_date(get_when())
+as_of = as_of.strftime("%B %d, %Y")
+st.markdown(f'### as of {as_of}')
 
 st.markdown('---')
 st.markdown(f'## 12/31/22 ARR forecast: {expected_arr}')
