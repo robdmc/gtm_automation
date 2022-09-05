@@ -190,53 +190,53 @@ class BlobPrinter():
         return df_sales, dfswr, df_arr
 
 
-class MiniModelCache:
-    def __init__(self, sqlite_file='/tmp/minimodel_cache.sqlite', use_pg=False, stale_seconds=3600):
-        if use_pg:
-            self.mm = ezr.MiniModelSqlite(file_name=sqlite_file, overwrite=False, read_only=False)
-        else:
-            self.mm = ezr.MiniModelPG(overwrite=False, read_only=False)
-        self.stale_seconds = stale_seconds
+# class MiniModelCache:
+#     def __init__(self, sqlite_file='/tmp/minimodel_cache.sqlite', use_pg=False, stale_seconds=3600):
+#         if use_pg:
+#             self.mm = ezr.MiniModelSqlite(file_name=sqlite_file, overwrite=False, read_only=False)
+#         else:
+#             self.mm = ezr.MiniModelPG(overwrite=False, read_only=False)
+#         self.stale_seconds = stale_seconds
 
-        self.functions = {}
+#         self.functions = {}
 
-    def set_last_run(self):
-        df = pd.DataFrame([{'time': datetime.datetime.now()}])
-        self.mm.create('mm_cache_last_run', df)
+#     def set_last_run(self):
+#         df = pd.DataFrame([{'time': datetime.datetime.now()}])
+#         self.mm.create('mm_cache_last_run', df)
 
-    def get_last_run(self):
-        if 'mm_cache_last_run' in self.mm.table_names:
-            return self.mm.tables.mm_cache_last_run.df.time.iloc[0]
-        else:
-            return datetime.datetime(2000, 1, 1)
+#     def get_last_run(self):
+#         if 'mm_cache_last_run' in self.mm.table_names:
+#             return self.mm.tables.mm_cache_last_run.df.time.iloc[0]
+#         else:
+#             return datetime.datetime(2000, 1, 1)
 
-    @property
-    def needs_rerun(self):
-        now = datetime.datetime.now()
-        last_run = self.get_last_run()
-        elapsed_seconds = (now - last_run).total_seconds()
-        return elapsed_seconds > self.stale_seconds
+#     @property
+#     def needs_rerun(self):
+#         now = datetime.datetime.now()
+#         last_run = self.get_last_run()
+#         elapsed_seconds = (now - last_run).total_seconds()
+#         return elapsed_seconds > self.stale_seconds
 
-    def register(self, name, func):
-        self.functions[name] = func
+#     def register(self, name, func):
+#         self.functions[name] = func
 
-    def recompute(self):
-        for name, func in self.functions.items():
-            df = func()
-            self.mm.create(name, df)
-        self.set_last_run()
+#     def recompute(self):
+#         for name, func in self.functions.items():
+#             df = func()
+#             self.mm.create(name, df)
+#         self.set_last_run()
 
-    def get(self, name):
-        if self.needs_rerun:
-            self.recompute()
+#     def get(self, name):
+#         if self.needs_rerun:
+#             self.recompute()
     
-        if name not in self.mm.table_names:
-            func = self.functions[name]
-            df = func()
-            self.mm.create(name, df)
-            self.set_last_run()
+#         if name not in self.mm.table_names:
+#             func = self.functions[name]
+#             df = func()
+#             self.mm.create(name, df)
+#             self.set_last_run()
 
-        return getattr(self.mm.tables, name).df
+#         return getattr(self.mm.tables, name).df
 
 
 
