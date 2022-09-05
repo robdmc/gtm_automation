@@ -16,16 +16,11 @@ import itertools
 
 import dash_lib as dl
 from dash_lib import (
-#     get_forecast_frames,
-#     get_sales_progress_frames,
     convert_dataframe,
-#     get_arr_timeseries,
     float_to_dollars,
     to_dollars,
     display,
-#     get_arr_timeseries,
     plot_frame,
-#     get_when,
 )
 
 
@@ -46,9 +41,6 @@ def get_sales_progress_frames():
     df_pretty = df.copy()
     for col in df_pretty.columns:
         df_pretty.loc[:, col] = to_dollars(df_pretty.loc[:, col])
-    # df = df.astype(int)
-    # df.loc[:, 'date'] = df.date.astype(np.datetime64)
-    # df = df.set_index('date')
     return df, df_pretty
 
 
@@ -87,11 +79,9 @@ def plot_arr_timeseries():
 
     
 dfprog_download, dfprog =  get_sales_progress_frames()        
-# dfprog, dfprod_download =  get_sales_progress_frames(get_when())        
 
 # # The "when" argument dictates when the cache automatically resets
 df_sales, df_stage_wr, df_arr = get_process_stats_frames()
-
 dfarr = get_arr_timeseries()
 
 
@@ -102,15 +92,13 @@ st.title('GTM Summary Statistics')
 
 st.markdown('---')
 st.markdown(f'## 12/31/22 ARR forecast: {expected_arr}')
-# st.write(dfarr)
-
-
 
 display(plot_arr_timeseries())
 
 with st.expander("See Table"):
     dfarr_disp = dfarr.copy()
     dfarr_disp['total'] = dfarr_disp.sum(axis=1)
+    dfarr_disp.index = [str(d.date()) for d in dfarr_disp.index]
     for col in dfarr_disp.columns:
         dfarr_disp.loc[:, col] = to_dollars(dfarr_disp.loc[:, col])
 
