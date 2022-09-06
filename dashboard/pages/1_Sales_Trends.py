@@ -41,6 +41,8 @@ class PredictorPlotter:
         self.dfw = dfw / scale
         self.dff = dff / scale
         self.dfh = dfh / scale
+
+        self.dff = self.dff + self.dfw.iloc[-1]
         
     
     def plot_latest_prediction(self):
@@ -168,7 +170,6 @@ def get_latest_date(when):
 
 as_of = get_latest_date(get_when())
 as_of = as_of.strftime("%B %d, %Y")
-st.markdown(f'### as of {as_of}')
 
 
 
@@ -193,6 +194,7 @@ df_sal2sql, df_sql2won, df_sal2won = get_conversion_frames(get_when())
 
 
 st.title('Sales Trends')
+st.markdown(f'### as of {as_of}')
 st.markdown('---')
 st.markdown(f'## 12/31/22 Sales Forecast')
 
@@ -244,11 +246,6 @@ with st.expander("See Table"):
 
 st.markdown('---')
 st.markdown(f'## 30-day Rolling SAL Creation Rate')
-
-with st.expander("See explanation"):
-     st.markdown("""
-         Add an explanation here
-     """)
 
 display(plot_rolling_sal_creation(df_sal))
 df_sal_pretty = df_sal.copy()

@@ -268,7 +268,7 @@ class PredictorGetter:
         
         dfw = self.get_won_revenue(starting=since, ending_inclusive=today)
         dff = self.get_predicted_revenue(starting=tomorrow, ending_exclusive=ending_exclusive)
-        dff = dff + dfw.iloc[-1, :]
+        # dff = dff + dfw.iloc[-1, :]
         
         dfw = dfw.loc[since:ending_exclusive, :]
         dff = dff.loc[since:ending_exclusive, :]
@@ -293,6 +293,7 @@ class PredictorGetter:
         predictions = []
         for today in dates:
             dfw, dff = self.get_plot_frames_for_span(since=since, today=today, ending_exclusive=ending_exclusive, units=units)
+            dff = dff + dfw.iloc[-1]
             predictions.append(dff.iloc[-1, :].sum())
             
         dfp = pd.DataFrame({'acv': predictions}, index=dates)
@@ -679,17 +680,15 @@ class RateGetter:
     
     @ezr.cached_container
     def df_sal2sql(self):
-        return self._get_single_conversion('sal2sql_opps')
+        return self._get_single_conversion('sal2sql_opps', bake_days=30, interval_days=90)
         
     @ezr.cached_container
     def df_sql2won(self):
-        return self._get_single_conversion('sql2won_opps')
-
-            
+        return self._get_single_conversion('sql2won_opps', bake_days=90, interval_days=365)
     
     @ezr.cached_container
     def df_sal2won(self):
-        return self._get_single_conversion('sal2won_opps')
+        return self._get_single_conversion('sal2won_opps', bake_days=90, interval_days=365)
 
 
 
