@@ -75,11 +75,6 @@ def plot_frame(df, alpha=1, use_label=True, units='', include_total=True, ylabel
 class BlobPrinter():
     def __init__(self):
         self.ps = gtm.PipeStats()
-        self.ps.disable_pickle_cache()
-
-        # ################
-        self.ps.enable_pickle_cache()
-        # ################
     
     @ezr.cached_container
     def _blob(self):
@@ -492,11 +487,6 @@ class CSExpansion:
         return dfo
     
 
-@st.cache
-def get_cs_expansion_metrics(when, today=None, ending_exclusive=None):
-    return CSExpansion(today=today, ending_exclusive=ending_exclusive).df_cs_expansion_forecast
-    
-
 class ARRGetter:
     def __init__(self, starting=None, ending_exclusive=None):
         # Get a reference for today
@@ -513,8 +503,6 @@ class ARRGetter:
         self.ending_inclusive = self.ending_exclusive - relativedelta(days=1)
         self.mph = gtm.ModelParamsHist(use_pg=USE_PG)
         
-        
-        # self.csx = CSExpansion(self.today, ending_exclusive=ending_exclusive)
         
     def _get_new_biz_frame(self, today, ending_exclusive):
         deals = gtm.Deals(
@@ -639,6 +627,77 @@ def get_arr_timeseries(when, starting=None, ending_exclusive=None):
 
 
 
+class SALGetter:
+    def __init__(self, pipe_stats_obj=None):
+        if pipe_stats_obj is None:
+            self.ps = gtm.PipeStats()
+        else:
+            self.ps = pipe_stats_obj
+            
+    @ezr.cached_container
+    def df_daily_actuals(self):
+        starting, ending = pd.Timestamp('1/1/2022'), fleming.floor(datetime.datetime.now(), day=1)
+        
+        ps = self.ps
+        dfa = ps.df_new_biz
+        dfa = dfa[['created_date', 'market_segment']]
+        dfa['num_opps'] = 1
+        dfa = dfa[dfa.created_date >= '1/1/2022']
+        dfa = dfa.pivot_table(index='created_date', columns='market_segment', values='num_opps', aggfunc=np.sum)
+        dfa = dfa.drop('unknown', axis=1, errors='ignore').fillna(0)
+        ind = pd.date_range(starting, ending, freq='D', name='created_date')
+        dfa = dfa.reindex(index=ind, fill_value=0)
+        return dfa
+    
+    def get_rolling_created(self, rolling_days=30, smoothing_degree=15):
+        df = self.df_daily_actuals
+        cols = list(df.columns)
+        df['weekday'] = df.index.weekday
+        df = df[df.weekday < 5]
+        df['days'] = np.arange(len(df))
+        df = df.rolling(rolling_days).sum().dropna()
+        fitter = ezr.BernsteinFitter(monotonic=False, match_left=False, match_right=False, non_negative=True)
+        for col in cols:
+            df.loc[:, col+'_fit'] = fitter.fit_predict(df.loc[:, 'days'], df.loc[:, col].values, smoothing_degree)
+        df = df.drop(['days', 'weekday'], axis=1)            
+        return df
+    
+    
+
+class RateGetter:
+    def __init__(self, pipe_stats_obj=None):
+        if pipe_stats_obj is None:
+            pipe_stats_obj = gtm.PipeStats()
+        self.ps = pipe_stats_obj
+        
+    def _get_single_conversion(self, rate_name, bake_days=30, interval_days=90):
+        ps = self.ps
+        today = fleming.floor(datetime.datetime.now(), day=1)
+        dfc = ps.get_conversion_timeseries(rate_name, interval_days, bake_days=bake_days) * 100
+        dfc = dfc.loc['1/1/2021':, :]
+        return dfc
+    
+    @ezr.cached_container
+    def df_sal2sql(self):
+        return self._get_single_conversion('sal2sql_opps')
+        
+    @ezr.cached_container
+    def df_sql2won(self):
+        return self._get_single_conversion('sql2won_opps')
+
+            
+    
+    @ezr.cached_container
+    def df_sal2won(self):
+        return self._get_single_conversion('sal2won_opps')
+
+
+
+
+
+
+
+
 class DashData:
     def __init__(self, use_pg=False):
         sqlite_file='/tmp/dash_play.sqlite'
@@ -653,6 +712,8 @@ class DashData:
             'process_sales_progress',
             'process_sales_timeseries',
             'process_process_stats',
+            'process_sal_creation_rate',
+            'process_conversion_rates'
         ]
 
     def run(self):
@@ -669,8 +730,7 @@ class DashData:
 
     def process_arr_time_series(self):
         df =  ARRGetter(starting=None, ending_exclusive=None).df
-        print(df.head().to_string())
-        self._save_frame('arr_time_series', df)
+        self._save_frame('dash_arr_time_series', df)
 
     def process_sales_progress(self):
         today = fleming.floor(datetime.datetime.now(), day=1)
@@ -691,28 +751,34 @@ class DashData:
 
         dfx = dfx.round()
 
-        self._save_frame('sales_progress', dfx)
+        self._save_frame('dash_sales_progress', dfx)
 
     def process_sales_timeseries(self):
         pg = PredictorGetter()
         df_won, df_forecast, df_pred_hist = pg.get_plot_frames(since='1/1/2022', ending_exclusive='1/1/2023', units='u')
-        self._save_frame('sales_won_timeseries', df_won)
-        self._save_frame('sales_forecast_timeseries', df_forecast)
-        self._save_frame('sales_prediction_history', df_pred_hist)
+        self._save_frame('dash_sales_won_timeseries', df_won)
+        self._save_frame('dash_sales_forecast_timeseries', df_forecast)
+        self._save_frame('dash_sales_prediction_history', df_pred_hist)
 
     def process_process_stats(self):
         bp = BlobPrinter()
         df_sales, df_stage_win_rate, df_arr = bp.get_frames()
 
-        self._save_frame('sales_stats', df_sales)
-        self._save_frame('sales_stats_stage_win_rate', df_stage_win_rate)
-        self._save_frame('sales_stats_arr', df_arr)
+        self._save_frame('dash_sales_stats', df_sales)
+        self._save_frame('dash_sales_stats_stage_win_rate', df_stage_win_rate)
+        self._save_frame('dash_sales_stats_arr', df_arr)
 
+    def process_sal_creation_rate(self):
+        getter = SALGetter()
+        df = getter.get_rolling_created(rolling_days=30, smoothing_degree=15)
+        df.index.name = 'date'
+        self._save_frame('dash_sal_creation_rate', df)
 
-
-
-    def process_arr_timeseries(self):
-        pass
+    def process_conversion_rates(self):
+        getter = RateGetter()
+        self._save_frame('dash_sal2sql', getter.df_sal2sql)
+        self._save_frame('dash_sql2won', getter.df_sql2won)
+        self._save_frame('dash_sal2won', getter.df_sal2won)
 
 
     def get_latest(self, name):
@@ -733,7 +799,7 @@ class DashData:
         return dfo
 
     def get_latest_time(self):
-        name = 'sales_won_timeseries'
+        name = 'dash_sales_won_timeseries'
         df = self.mm.query(f"""
         SELECT
             date

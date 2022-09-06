@@ -29,7 +29,7 @@ from dash_lib import (
 
 @st.cache
 def get_arr_timeseries(when):
-    df = dl.DashData().get_latest('arr_time_series')
+    df = dl.DashData().get_latest('dash_arr_time_series')
     df.loc[:, 'date'] = df.date.astype(np.datetime64)
     df = df.set_index('date')
     return df
@@ -37,7 +37,7 @@ def get_arr_timeseries(when):
 
 @st.cache
 def get_sales_progress_frames(when):
-    df = dl.DashData().get_latest('sales_progress')
+    df = dl.DashData().get_latest('dash_sales_progress')
     df = df.set_index('index')
     df.index.name = 'Market Segment'
     df_pretty = df.copy()
@@ -50,9 +50,9 @@ def get_sales_progress_frames(when):
 @st.cache
 def get_process_stats_frames(when):
     dd = dl.DashData()
-    df_sales = dd.get_latest('sales_stats')
-    df_stage_wr = dd.get_latest('sales_stats_stage_win_rate')
-    df_arr = dd.get_latest('sales_stats_arr')
+    df_sales = dd.get_latest('dash_sales_stats')
+    df_stage_wr = dd.get_latest('dash_sales_stats_stage_win_rate')
+    df_arr = dd.get_latest('dash_sales_stats_arr')
 
     df_sales = df_sales.set_index('index')
     df_stage_wr = df_stage_wr.set_index('index')
