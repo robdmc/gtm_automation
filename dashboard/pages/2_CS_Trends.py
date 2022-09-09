@@ -1,315 +1,280 @@
 import streamlit as st
-# import itertools
-# import pandas as pd
-# import numpy as np
-# import locale
-# locale.setlocale(locale.LC_ALL, 'en_US')
-# import easier as ezr
-# import fleming 
-# from simbiz import api_live as smb
-# import datetime
-# from dateutil.relativedelta import relativedelta
-# import holoviews as hv
-# from holoviews import opts
-# hv.extension('bokeh')
+# from streamlit import caching
+import gtmarket as gtm
+import pandas as pd
+import numpy as np
+import fleming
+import datetime
+import copy
+import locale
+locale.setlocale(locale.LC_ALL, 'en_US')
+import easier as ezr
+from dateutil.relativedelta import relativedelta
+import holoviews as hv
+import datetime
+import itertools
+from holoviews import opts
+from hvplot import pandas
+
+import dash_lib as dl
+from dash_lib import (
+    DashData,
+    convert_dataframe,
+    float_to_dollars,
+    to_dollars,
+    display,
+    plot_frame,
+    get_when,
+)
+hv.extension('bokeh')
+opts.defaults(opts.Area(width=800, height=400), tools=[])
+opts.defaults(opts.Curve(width=800, height=400, tools=['hover']))
+
+
+@st.cache
+def get_latest_date(when):
+    return DashData().get_latest_time()
+
+@st.cache
+def get_frames(when):
+    dd = DashData()
+    df_metrics = dd.get_latest('dash_cs_metrics')
+    df_acv = dd.get_latest('dash_contract_acv')
+    df_months = dd.get_latest('dash_contract_months')
+
+    def transform_to_date(df, col):
+        df.loc[:, col] = df.loc[:, col].astype(np.datetime64)
+        return df
+
+    df_metrics = transform_to_date(df_metrics, 'date')
+    df_acv = transform_to_date(df_acv, 'date')
+    df_months = transform_to_date(df_months, 'date')
+
+    return df_metrics, df_acv, df_months
 
 
 
 
-st.title('this is my title')
 
-# @st.cache
-# def get_frame():
-#     from simbiz import api_live as smb
-#     op = smb.OppLoader()
-#     op.enable_pickle_cache()
-#     return op.df_new_biz
+class CSPlotter:
+    def __init__(self, df_metrics, df_acv, df_months):
+        self.df_metrics = df_metrics
+        self.df_acv = df_acv
+        self.df_months = df_months
+        
+    def _plot_time_series(self, df, col, label, final_values, units='', multiplier=1):
+        name_mapper = {k: f'{k} {v:0.1f}{units}'.strip() for (k, v) in final_values.items()}
+        dfx = df[df.variable == col].pivot_table(index='date', columns='market_segment', values='value', aggfunc=np.sum)
+        dfx = multiplier * dfx.rename(columns=name_mapper)
+        # st.write(dfx)
+        # st.write(dfx.reset_index().dtypes.astype(str))
+        c = dfx.hvplot(ylabel=label).options(legend_position='top', show_grid=True)
+        return c
 
+    def _get_final_values(self, df, col, multiplier=1):
+        dfx = df[df.variable == col].pivot_table(index='date', columns='market_segment', values='value', aggfunc=np.sum)
+        out = (multiplier * dfx.iloc[-1, :]).to_dict()
+        return out
 
+    def get_retention_plots(self):
+        
+        df = self.df_metrics
 
-# def to_dollars(ser):
-#     return [locale.currency(x, grouping=True).split('.')[0] for x in ser]
+        col = 'ndr'
+        label = 'Rolling 12-month Net-Dollar-Retention (%)'
+        units = '%'
+        final_values = self._get_final_values(df, col)
+        c_ndr = self._plot_time_series(df, col, label, final_values, units=units)
 
-# def to_percent(ser):
-#     return ['-' if x == '-' else f'{x}%' for x in ser]
+        col = 'expanded_pct'
+        label = 'Rolling 12-month Expansion APR (%)'
+        units = '%'
+        final_values = self._get_final_values(df, col)
+        c_ex = self._plot_time_series(df, col, label, final_values, units=units)
 
-# def print_blob():
-#     bp = BlobPrinter()
-#     ps = smb.PipeStats()
-#     ps.enable_pickle_cache()
-#     bp.display_win_rates(ps)
+        col = 'renewed_pct'
+        label = 'Rolling 12-month Dollar Retention Rate (%)'
+        units = '%'
+        final_values = self._get_final_values(df, col)
+        c_ren = self._plot_time_series(df, col, label, final_values, units=units)
 
+        col = 'reduced_pct'
+        label = 'Rolling 12-month Reduction Rate (%)'
+        units = '%'
+        final_values = self._get_final_values(df, col, multiplier=-1)
+        c_red = self._plot_time_series(df, col, label, final_values, units=units, multiplier=-1)
 
+        col = 'churned_pct'
+        label = 'Rolling 12-month Churn Rate (%)'
+        units = '%'
+        final_values = self._get_final_values(df, col, multiplier=-1)
+        c_churn = self._plot_time_series(df, col, label, final_values, units=units, multiplier=-1)
+        return c_ndr, c_ex, c_ren, c_red, c_churn
 
-# class BlobPrinter():
+        
+        # return hv.Layout(c_list)#.cols(1).options(shared_axes=False)
     
-#     @ezr.cached_container
-#     def _blob(self):
-        
-#         pmh = smb.ModelParamsHist()
-#         pm = pmh.get_latest()
-#         blob = pm.to_blob()
-#         return blob
+    def plot_duration_time_series(self):
     
-#     @ezr.cached_container
-#     def blob(self):
-#         blob = self._blob
-#         for key in [
-#             'existing_pipe_model_with_expansion',            
-#             'existing_pipe_model']:
-#             blob.pop(key)
-#         return blob
+        # def dollar_weighted_duration(op, now):
+        #     # Now is the date for which you want to compute metrics
+        #     now = pd.Timestamp(now)
+
+
+        #     # Get all orders and standardize them
+        #     df = op.df_orders
+        #     df = df[(df.order_start_date <= now) & (df.order_ends >= now)]
+
+        #     df = df[['mrr', 'market_segment', 'months']]
+        #     df.loc[:, 'market_segment'] = [ezr.slugify(s) for s in df.market_segment]
+        #     df['weight_and_value'] = df.months * df.mrr
+        #     df['weight'] = df.mrr
+
+
+        #     dfg = df.groupby(by='market_segment')[['weight_and_value', 'weight']].sum()
+        #     dfg['duration_months'] = dfg.weight_and_value / dfg.weight
+        #     rec = dfg.duration_months.to_dict()
+        #     rec['date'] = now
+        #     return rec
+
+
+        # dates = pd.date_range('1/1/2021', datetime.datetime.now())
+
+        # rec_list = []
+        # for date in tqdm(dates):
+        #     rec_list.append(dollar_weighted_duration(self.op, date))
+        # df = pd.DataFrame(rec_list).set_index('date')
+        
+        df = self.df_months
+        renamer = {k: f'{k} {v:0.1f}' for (k, v) in df.iloc[-1, :].items()}
+        df = df.rename(columns=renamer)
+
+        return df.hvplot(ylabel='Dollar Weighted Contract Duration (months)').options(legend_position='top', show_grid=True)
+
+
+    def plot_contracted_acv(self):
     
-#     def display_win_rates(self, pipe_stats_obj):
-#         ps = pipe_stats_obj
-#         ser_sal2sql = (100 * ps.get_conversion_timeseries('sal2sql_opps', interval_days=90, bake_days=30)).round(1).iloc[-1]
-#         ser_sql2win = (100 * ps.get_conversion_timeseries('sql2won_opps', interval_days=365, bake_days=90)).round(1).iloc[-1]
-#         ser_sal2win = (100 * ps.get_conversion_timeseries('sal2won_opps', interval_days=365, bake_days=90)).round(1).iloc[-1]
-        
-#         ser = ps.get_opp_timeseries('num_sals', interval_days=30).iloc[-1, :]
-#         ser['total'] = ser.sum()
-#         dfs = pd.DataFrame({'SALS / month': ser}).round().astype(int)
-        
-        
-#         dfd = (pd.DataFrame({'ACV': ps.get_mean_deal_size_timeseries().iloc[-1, :]})).round(1)
-#         dfd = dfd.loc[['enterprise', 'commercial', 'velocity'], :]
-        
-        
-#         dfwr = pd.DataFrame({
-#             'SAL⮕SQL': ser_sal2sql,
-#             'SQL⮕WON': ser_sql2win,
-#             'SAL⮕WON': ser_sal2win,
-#         })
-        
-#         ser = (100 * ps.get_stage_win_rates_timeseries(interval_days=365, bake_days=90).iloc[-1, :]).round(1)
-#         ser = ser[['SAL', 'Discovery', 'Demo', 'Proposal', 'Negotiation']]
-#         dfswr = pd.DataFrame({'Win rate by stage': ser})        
-        
-#         today = fleming.floor(datetime.datetime.now(), day=1)
-#         dfo = ps.op.df_orders
-#         dfo.loc[:, 'market_segment'] = [ezr.slugify(m) for m in dfo.market_segment]
-
-#         dfo = dfo[(dfo.order_start_date <= today) & (dfo.order_ends > today)]
-#         ser = (12 * dfo.groupby(by='market_segment')[['mrr']].sum()).round(2).mrr
-#         ser = ser[['commercial', 'enterprise', 'velocity']]
-#         ser['combined'] = ser.sum()
-#         # dfr = pd.DataFrame({'Current ARR ($M)': ser})
-#         dfr = pd.DataFrame({'Current ARR': ser})
-        
-#         dfn = pipe_stats_obj.op.get_ndr_metrics()
-#         dfn = dfn[dfn.variable == 'ndr'].set_index('market_segment')[['value']].round(1).rename(columns={'value': '12-month NDR'})
-        
-#         dft = ps.get_conversion_timeseries('sal2won_time', interval_days=365, bake_days=90).iloc[[-1], :].round().astype(int).T
-#         dft.columns = ['Days to Win']
-#         dft.index.name = None      
-        
-#         df_sales = dfs
-#         df_sales = df_sales.join(dfwr).drop('total')
-#         df_sales = df_sales.join(dft)
-#         df_sales = df_sales.join(dfd)
-#         sal_val = (.01 * df_sales['SAL⮕WON'] * df_sales['ACV']).round().astype(int)
-#         sql_val = (.01 * df_sales['SQL⮕WON'] * df_sales['ACV']).round().astype(int)
-#         value_rate = sal_val * df_sales['SALS / month']
-        
-        
-#         df_sales['SAL Val'] = to_dollars(sal_val)
-#         df_sales['SQL Val'] = to_dollars(sql_val) #[locale.currency(x, grouping=True).split('.')[0] for x in sql_val]
-#         df_sales.loc[:, 'ACV'] = to_dollars(df_sales.ACV) #[locale.currency(x, grouping=True).split('.')[0] for x in df_sales.ACV]
-#         df_sales.loc[:, 'SAL Value / Month'] = to_dollars(value_rate) #[locale.currency(x, grouping=True).split('.')[0] for x in value_rate]
-        
-#         for col in dfwr.columns:
-#             df_sales.loc[:, col] = to_percent(df_sales.loc[:, col])
-        
-        
-#         df_arr = dfr
-#         df_arr = df_arr.join(dfn)
-#         df_arr = df_arr.fillna('-')
-#         monthly_rate = (.01 * df_arr['12-month NDR']) ** (1 / 12) - 1
-#         # display(df_arr)
-#         df_arr['Value / Month'] = df_arr['Current ARR'] * monthly_rate
-        
-#         df_arr.loc[:, 'Current ARR'] = to_dollars(df_arr['Current ARR'])
-#         df_arr.loc[:, '12-month NDR'] = to_percent(df_arr.loc[:, '12-month NDR'])
-#         df_arr.loc[:, 'Value / Month'] = to_dollars(df_arr['Value / Month'])
-#         df_arr.index.name = None
-#         st.dataframe(df_sales, width=1800)
-#         st.dataframe(df_arr, width=800)
+        def mean_contract_acv(op, now):
+            # Now is the date for which you want to compute metrics
+            now = pd.Timestamp(now)
 
 
-# def plot_frame(df, alpha=1, use_label=True, units='', include_total=True, ylabel='ACV'):  # pragma: no cover
-#     import holoviews as hv
-#     colorcycle = itertools.cycle(ezr.cc.codes)
-#     c_list = []
-#     base = 0 * df.iloc[:, -1]
-#     for col in df.columns:
-#         if use_label:
-#             final = df[col].iloc[-1]
-#             label = col
-#             label = label.split('_')[0].title()
-#             label = f'{label} {final:0.1f}{units.upper()}'
-#             if include_total and (col == df.columns[-1]):
-#                 label = label + f'  Total={df.iloc[-1].sum():0.1f}{units.upper()}'
-#         else:
-#             label = ''
-#         y = df[col]
-#         c = hv.Area(
-#             (df.index, y + base, base),
-#             kdims=['Date'],
-#             vdims=[f'{ylabel} ${units.upper()}', 'base'],
-#             label=label
-#         ).options(alpha=alpha, color=next(colorcycle), show_grid=True)
-#         c_list.append(c)
-#         c_list.append(hv.Curve((df.index, y + base)).options(color='black', alpha=.01))
-#         base += y
-#     return hv.Overlay(c_list).options(legend_position='top')
+            # Get all orders and standardize them
+            df = op.df_orders
+            df = df[(df.order_start_date <= now) & (df.order_ends >= now)]
+
+            df = df[['account_id', 'mrr', 'market_segment']]
+            df.loc[:, 'market_segment'] = [ezr.slugify(s) for s in df.market_segment]
+            df = df.groupby(by=['account_id', 'market_segment'])[['mrr']].sum().reset_index()
+
+            rec = (12 * df.groupby(by='market_segment').mrr.mean() / 1000).to_dict()
+            rec['date'] = now
+            return rec
 
 
-# class PredictorPlotter:
-#     def __init__(self, pipe_stats_obj=None, include_sales_expansion=True):
-#         if pipe_stats_obj is None:
-#             pipe_stats_obj = smb.PipeStats()
-#         self.ps = pipe_stats_obj
-#         self.include_sales_expansion = include_sales_expansion
+
+        dates = pd.date_range('1/1/2021', datetime.datetime.now())
+
+        rec_list = []
+        for date in tqdm(dates):
+            rec_list.append(mean_contract_acv(op, date))
+        df_ = pd.DataFrame(rec_list).set_index('date')
+
+        df = df_.copy()
+        renamer = {k: f'{k} {v:0.1f}K' for (k, v) in df.iloc[-1, :].items()}
+        df = df.rename(columns=renamer)
+
+        c_abs = df.hvplot(ylabel='ACV per Deal $K').options(legend_position='top', show_grid=True, width=450)
         
-#     def get_predicted_revenue(self, starting=None, ending_exclusive=None):
-#         if starting is None:
-#             starting = datetime.datetime.now()
-            
-#         starting = pd.Timestamp(starting)
-#         starting = fleming.floor(starting, day=1)        
-#         if ending_exclusive is None:
-#             ending_exclusive = starting + relativedelta(years=1)
-#         ending_exclusive = pd.Timestamp(ending_exclusive)
-#         deals = smb.Deals(starting=starting, ending_exclusive=ending_exclusive, include_sales_expansion=self.include_sales_expansion)
-#         return deals.df_predicted
+        df= df_.copy()
+        df = 100 * (df / df.iloc[0, :] - 1)
+        renamer = {k: f'{k} {v:0.1f}%' for (k, v) in df.iloc[-1, :].items()}
+        df = df.rename(columns=renamer)
+        c_rel = df.hvplot(ylabel='Percent Change in ACV per Deal').options(legend_position='top', show_grid=True, width=450)
+        return hv.Layout([c_abs, c_rel]).cols(2).options(shared_axes=False)  
     
-#     @ezr.cached_container
-#     def _df_won(self):
-#         ps = smb.PipeStats(pilots_are_new_biz=True, sales_expansion_are_new_biz=self.include_sales_expansion)
-#         df = ps.get_opp_timeseries(value='deal_acv', cumulative_since='12/31/2020')
-#         return df
-        
-#     def get_won_revenue(self, starting=None, ending_inclusive=None):
-#         today = fleming.floor(datetime.datetime.now(), day=1)
-#         if ending_inclusive is None:
-#             ending_inclusive = today
-#         if starting is None:
-#             starting = fleming.floor(today, year=1)
-#         starting = pd.Timestamp(starting)
-#         ending_inclusive = pd.Timestamp(ending_inclusive)
-#         if starting < pd.Timestamp('1/1/2020'):
-#             raise ValueError('Can only get revenue since 1/1/2020')
-        
-#         df = self._df_won
-#         df = df.loc[starting - relativedelta(days=1):ending_inclusive, :].sort_index()
-#         df = df - df.iloc[0, :]
-#         df = df.loc[starting:ending_inclusive, :]
-#         ind = pd.date_range(starting, ending_inclusive)
-#         df = df.reindex(index=ind)
-#         df = df.fillna(method='ffill')
-#         return df
-    
-#     def get_forecast(self, since=None, today=None, ending_exclusive=None, separate_past_future=False):
-#         if today is None:
-#             today = fleming.floor(datetime.datetime.now(), day=1)
-#         if since is None:
-#             since = fleming.floor(today, year=1)
-#         if ending_exclusive is None:
-#             ending_exclusive = today + relativedelta(years=1)
-            
-#         since, today, ending_exclusive = map(pd.Timestamp, [since, today, ending_exclusive])
-#         tomorrow = today + relativedelta(days=1)
-            
-        
-#         dfw = self.get_won_revenue(starting=since, ending_inclusive=today)
-#         dff = self.get_predicted_revenue(starting=tomorrow, ending_exclusive=ending_exclusive)
-#         dff = dff + dfw.iloc[-1, :]
-        
-#         dfw = dfw.loc[since:ending_exclusive, :]
-#         dff = dff.loc[since:ending_exclusive, :]
-        
-#         if separate_past_future:
-#             return dfw, dff
-#         else:
-#             df = pd.concat([dfw, dff], axis=0)
-#             return df
-        
-#     def _get_plot_frames(self, since=None, today=None, ending_exclusive=None, units='m'):
-#         units = units.lower()
-            
-#         units_lookup = {
-#             'k': 1000,
-#             'm': 1e6
-#         }
-        
-#         scale = units_lookup[units]
-        
-#         dfw, dff = self.get_forecast(since=since, today=today, ending_exclusive=ending_exclusive, separate_past_future=True)
-#         if not dff.empty:
-#             dfft = dff.T
-#             dfft.loc[:, dfw.index[-1]] = dfw.iloc[-1, :]
-#             dff = dfft.T.sort_index()
-        
-#         dff = dff / scale
-#         dfw = dfw /  scale
-#         return dfw, dff
-        
-    
-    
-#     def plot_latest_prediction(self, since=None, today=None, ending_exclusive=None, units='m'):
-#         dfw, dff = self._get_plot_frames(since=since, today=today, ending_exclusive=ending_exclusive, units=units)
-        
-#         c1 = plot_frame(dfw, units=units, use_label=False)
-#         c2 = plot_frame(dff, units=units, alpha=.5, use_label=True, include_total=False)
-#         # display(dff.sum(axis=1))
-        
-#         return (c1 * c2).options(legend_position='top')
-    
-#     def plot_prediction_history(self, since=None, ending_exclusive=None,  units='m'):
-#         mph = smb.ModelParamsHist()
-#         df = mph.get_history()
-#         min_time, max_time = [fleming.floor(d, day=1) for d in [df.time.min(), df.time.max()]]
-        
-#         dates = pd.date_range(min_time, max_time)
-#         predictions = []
-#         for today in dates:
-#             dfw, dff = self._get_plot_frames(since=since, today=today, ending_exclusive=ending_exclusive, units=units)
-#             predictions.append(dff.iloc[-1, :].sum())
-            
-#         dfp = pd.DataFrame({'acv': predictions}, index=dates)
-#         ind = pd.date_range(dfp.index[0], ending_exclusive, inclusive='left')
-#         dfp = dfp.reindex(ind).fillna(method='ffill')
-#         # display(dfp)
-#         final_val = dfp.acv.iloc[-1]
-#         c = hv.Curve((dfp.index, dfp.acv), label=f'Pacing to {final_val:0.1f}{units.upper()}').options(color='gray')
-#         return c
-    
-#     def plot(self, since=None, today=None, ending_exclusive=None, units='m'):
-#         ol = self.plot_latest_prediction(since=since, today=today, ending_exclusive=ending_exclusive, units=units)
-#         c = self.plot_prediction_history(since=since, ending_exclusive=ending_exclusive, units=units)
-#         return hv.Overlay([ol, c]).options(legend_position='top')
-                                         
-
-# def display(hv_obj):
-#     st.write(hv.render(hv_obj, backend='bokeh'))
-
-
-# def plot_predict(ending_exclusive):        
-#     since='1/1/2022'
-#     ps = smb.PipeStats()
-#     ps.enable_pickle_cache()
-#     pp = PredictorPlotter(ps, include_sales_expansion=True)
-#     display(pp.plot(since=since, ending_exclusive=ending_exclusive, units='m'))
+    def plot(self):
+        display(self.plot_ndr_time_series())
+        display(self.plot_duration_time_series())
+        display(self.plot_contracted_acv())
 
 
 
 
-# opts.defaults(opts.Curve(width=800, height=400, tools=['hover']))
-        
-        
-
-# print_blob()
 
 
-# ending_exclusive = st.text_input('The prediction end date', value='1/1/2023')
-# plot_predict(ending_exclusive)
+as_of = get_latest_date(get_when())
+df_metrics, df_acv, df_months = get_frames(get_when())
+
+
+st.title('CS Trends')
+st.markdown(f'### as of {as_of}')
+# st.write(df_metrics)
+# st.write(df_acv)
+# st.write(df_months)
+plotter = CSPlotter(df_metrics, df_acv, df_months)
+# plotter.plot_ndr_time_series()
+
+
+c_ndr, c_ex, c_ren, c_red, c_churn = plotter.get_retention_plots()
+
+st.markdown('---')
+st.markdown(f'## Net Dollar Retention')
+with st.expander("See explanation"):
+     st.markdown("""
+         Net Dollar Retention is defined with the following statement: Look at how much money
+         our customers were paying us one year ago.  Compare that number with the amount those
+         same customers are paying us today.  The ratio of those two numbers is the 12-month
+         Net Dollar Retention, (NDR).  Here are the steps taken to make this graph.
+
+         * For each day:
+            * Define `now` as today
+            * Define `then` as exactly 12 months ago
+            * Find all orders with `order_start_date` and `order_ends` that bracket the `then` date.
+              Sum up their MRR and call it `mrr_then`.  Also store their account_ids.
+            * Now find all orders with `order_start_date` and `order_ends` that bracket the `now` date.
+            * Limit the `now` orders to conly contain records that match the account_ids from the `then` set.
+            * Sum up the revenue of the `now` set and call it `mrr_now.`
+                * This will be the amount of money that accounts active `then` are paying us `now`.
+            * Compute NDR as the ratio `mrr_now` / `mrr_then`.
+            * Plot a point on the graph for the `now` date with this NDR value.
+
+     """)
+display(c_ndr)
+
+
+st.markdown('---')
+st.markdown(f'## Expansion')
+with st.expander("See explanation"):
+     st.markdown("""
+         This is ...
+     """)
+display(c_ex)
+
+st.markdown('---')
+st.markdown(f'## Gross Revenue Churn')
+with st.expander("See explanation"):
+     st.markdown("""
+         This is ...
+     """)
+display(c_churn)
+
+
+st.markdown('---')
+st.markdown(f'## Revenue Fraction lost to Churned Accounts')
+with st.expander("See explanation"):
+     st.markdown("""
+         This is the percentage of our revenue that we lost to actually churned customers.
+         These numbers ignore reduced contract values.
+     """)
+display(c_churn)
+
+st.markdown('---')
+st.markdown(f'## Revenue Fraction lost to Reduced Accounts')
+with st.expander("See explanation"):
+     st.markdown("""
+         This is the percentage of our revenue that we lost to customers downsizing.
+     """)
+display(c_red)
+
+

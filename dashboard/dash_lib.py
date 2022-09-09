@@ -19,7 +19,7 @@ from holoviews import opts
 opts.defaults(opts.Area(width=800, height=400), tools=[])
 opts.defaults(opts.Curve(width=800, height=400, tools=['hover']))
 
-
+logger = ezr.get_logger('dash_data_runner')
 
 USE_PG=True
 
@@ -163,7 +163,6 @@ class BlobPrinter():
         
         for col in dfwr.columns:
             df_sales.loc[:, col] = to_percent(df_sales.loc[:, col])
-        
         
         df_arr = dfr
         df_arr = df_arr.join(dfn)
@@ -373,7 +372,9 @@ def get_ndr_metrics(when):
     return NDRGetter().df_metrics
 
 
-class CSExpansion:
+class CSExpansion(ezr.pickle_cache_mixin):
+    pkc = ezr.pickle_cache_state('reset')
+
     def __init__(self, today=None, ending_exclusive=None):
         self.ps = gtm.PipeStats()
         if today is None:
@@ -476,7 +477,7 @@ class CSExpansion:
         dfo = dfo.loc[self.today:, :].cumsum()    
         return dfo
     
-    @ezr.cached_container
+    @ezr.pickle_cached_container()
     def df_cs_expansion_forecast(self):
         dfo = self.df_cs_expansion_from_current_orders
         dfp = self.df_cs_expansion_expected_from_pipe
@@ -488,7 +489,10 @@ class CSExpansion:
         return dfo
     
 
-class ARRGetter:
+class ARRGetter(ezr.pickle_cache_mixin):
+
+    pkc = ezr.pickle_cache_state('reset')
+
     def __init__(self, starting=None, ending_exclusive=None):
         # Get a reference for today
         self.today = fleming.floor(datetime.datetime.now(), day=1)
@@ -607,9 +611,8 @@ class ARRGetter:
         dfh = pd.DataFrame({'arr': dfh.sum(axis=1)})
         return dfh
         
-    @ezr.cached_container
+    @ezr.pickle_cached_container()
     def df(self):
-        # import pdb; pdb.set_trace()
         dfc = self.df_arr_history
         dfn = self.df_new_biz
         dfn = dfn.reindex(dfc.index).fillna(0)
@@ -635,7 +638,7 @@ class SALGetter:
         else:
             self.ps = pipe_stats_obj
             
-    @ezr.cached_container
+    @ezr.pickle_cached_container()
     def df_daily_actuals(self):
         starting, ending = pd.Timestamp('1/1/2022'), fleming.floor(datetime.datetime.now(), day=1)
         
@@ -691,6 +694,163 @@ class RateGetter:
         return self._get_single_conversion('sal2won_opps', bake_days=90, interval_days=365)
 
 
+class CSGetter(ezr.pickle_cache_mixin):
+
+    pkc = ezr.pickle_cache_state('reset')
+
+    def __init__(self, months=12):
+        self.op = gtm.OrderProducts()
+        self.months = months
+        
+    def _get_metrics(self, now, months=12):
+        """
+        Returns comparison metrics for the state of orders "now" compared to "months" ago
+        """
+        # Now is the date for which you want to compute metrics
+        now = pd.Timestamp(now)
+
+        # You will be comparing ARR between now and this many months ago to compute metrics
+        then = now - relativedelta(months=months)
+
+        # Get all orders and standardize them
+        df = self.op.df_orders[['account_id', 'order_start_date', 'order_ends', 'mrr', 'market_segment']]
+        df.loc[:, 'market_segment'] = [ezr.slugify(s) for s in df.market_segment]
+
+        # Create two frames.  One for "now" and one for "then"
+        df_now = df[(df.order_start_date <= now) & (df.order_ends >= now)]
+        df_then = df[(df.order_start_date <= then) & (df.order_ends >= then)]
+
+        # Combine all revenue for a given account into a single record
+        def agg_by_account(df):
+            df = df.groupby(by=['account_id', 'market_segment'])[['mrr']].sum().reset_index()
+            return df
+
+        df_now = agg_by_account(df_now)
+        df_then = agg_by_account(df_then)
+
+        # Join the accounts that existed "then" with what exists "now".  Fill revenue with 0 if they don't exist "now"
+        dfj = pd.merge(df_then, df_now, on=['account_id', 'market_segment'], how='left', suffixes=['_ref', '_ret']).fillna(0)
+
+        # This is the base from which we will compute all metrics
+        dfj['base'] = dfj.mrr_ref
+
+        # Exppanded revenue is any revenue over and above the base an org had "back then"
+        dfj['expanded'] = np.maximum(0, dfj.mrr_ret - dfj.mrr_ref)
+
+        # Reduction revenue is any deficit below the base that an org had "back then"
+        dfj['gross_churn'] = np.maximum(0, dfj.mrr_ref - dfj.mrr_ret)
+
+        # Renewed is the amount of revenue we have "now" that we also had "back then"
+        dfj['renewed'] = np.minimum(dfj.mrr_ref, dfj.mrr_ret)
+
+        # If there is no revenue "now", that means the or churned
+        dfj['churned'] = [ref if int(round(ret)) == 0 else 0 for (ref, ret) in zip(dfj.mrr_ref, dfj.mrr_ret)]
+
+        # Reduced included churned revenue in the way computed it.  So remove that churned revenue
+        dfj.loc[:, 'reduced'] = dfj.gross_churn - dfj.churned
+
+        # Sum all revenues by market segment and convert MRR to ARR
+        dfg = dfj.drop(['account_id'], axis=1).groupby(by=['market_segment']).sum()
+        dfg = dfg * 12
+
+        # Add a fake new market segment of "all"
+        dfg = dfg.T
+        dfg['all'] = dfg.sum(axis=1)
+        dfg = dfg.T
+
+        # Net dollar is looking at the sum of all companies we had under contract "then" and
+        # looking at the percent increase/decrease to everything they are paying us now
+        dfg['ndr'] = 100 * dfg.mrr_ret / dfg.mrr_ref
+
+        # I'd also like to know more granular percentages with respect to the base
+        for metric in ['expanded', 'reduced', 'renewed', 'churned', 'gross_churn']:
+            dfg[f'{metric}_pct'] = 100 * dfg[metric] / dfg.base
+
+        # Clean up some variables I don't care about
+        dfg = dfg.drop(['mrr_ref', 'mrr_ret'], axis=1).reset_index()
+
+        # Transform the data into a melted format and insert date
+        dfg = pd.melt(dfg, id_vars=['market_segment'])
+        dfg.insert(0, 'date', now)
+        return dfg
+    
+    @ezr.pickle_cached_container()
+    def df_metrics(self):
+        dates = pd.date_range('1/1/2021', datetime.datetime.now())
+
+        df_list = []
+        for date in dates:
+            df_list.append(self._get_metrics(date, months=12))
+
+        df = pd.concat(df_list, axis=0, ignore_index=True, sort=False)
+        df = df.set_index(['date', 'market_segment', 'variable'])
+        return df
+
+
+    @ezr.pickle_cached_container()
+    def df_contract_months(self):
+    
+        def dollar_weighted_duration(op, now):
+            # Now is the date for which you want to compute metrics
+            now = pd.Timestamp(now)
+
+
+            # Get all orders and standardize them
+            df = op.df_orders
+            df = df[(df.order_start_date <= now) & (df.order_ends >= now)]
+
+            df = df[['mrr', 'market_segment', 'months']]
+            df.loc[:, 'market_segment'] = [ezr.slugify(s) for s in df.market_segment]
+            df['weight_and_value'] = df.months * df.mrr
+            df['weight'] = df.mrr
+
+
+            dfg = df.groupby(by='market_segment')[['weight_and_value', 'weight']].sum()
+            dfg['duration_months'] = dfg.weight_and_value / dfg.weight
+            rec = dfg.duration_months.to_dict()
+            rec['date'] = now
+            return rec
+
+
+        dates = pd.date_range('1/1/2021', datetime.datetime.now())
+
+        rec_list = []
+        for date in dates:
+            rec_list.append(dollar_weighted_duration(self.op, date))
+        df = pd.DataFrame(rec_list).set_index('date')
+
+        return df
+
+    @ezr.pickle_cached_container()
+    def df_contract_acv(self):
+    
+        def mean_contract_acv(now):
+            # Now is the date for which you want to compute metrics
+            now = pd.Timestamp(now)
+
+
+            # Get all orders and standardize them
+            df = self.op.df_orders
+            df = df[(df.order_start_date <= now) & (df.order_ends >= now)]
+
+            df = df[['account_id', 'mrr', 'market_segment']]
+            df.loc[:, 'market_segment'] = [ezr.slugify(s) for s in df.market_segment]
+            df = df.groupby(by=['account_id', 'market_segment'])[['mrr']].sum().reset_index()
+
+            rec = (12 * df.groupby(by='market_segment').mrr.mean()).to_dict()
+            rec['date'] = now
+            return rec
+
+
+
+        dates = pd.date_range('1/1/2021', datetime.datetime.now())
+
+        rec_list = []
+        for date in dates:
+            rec_list.append(mean_contract_acv(date))
+        df = pd.DataFrame(rec_list).set_index('date').round()
+        
+        return df
 
 
 
@@ -712,12 +872,43 @@ class DashData:
             'process_sales_timeseries',
             'process_process_stats',
             'process_sal_creation_rate',
-            'process_conversion_rates'
+            'process_conversion_rates',
+            'process_cs_metrics'
         ]
 
+    def _enable_caches(self):
+            logger.info('enabling caches')
+            gtm.PipeStats.enable_pickle_cache()
+            CSExpansion.enable_pickle_cache()
+            ARRGetter.enable_pickle_cache()
+            CSGetter.enable_pickle_cache()
+
+    def _disable_caches(self):
+            logger.info('disabling caches')
+            gtm.PipeStats.disable_pickle_cache()
+            CSExpansion.disable_pickle_cache()
+            ARRGetter.disable_pickle_cache()
+            CSGetter.disable_pickle_cache()
+
+    def _clear_caches(self):
+            logger.info('clearing caches')
+            gtm.PipeStats.clear_all_default_pickle_cashes()
+
+
     def run(self):
-        for method in self.methods:
-            getattr(self, method)()
+        try:
+            self._clear_caches()
+            self._enable_caches()
+            for method in self.methods:
+                logger.info(f'running: {method}')
+                getattr(self, method)()
+        except:
+             raise
+        finally:
+            self._disable_caches()
+            self._clear_caches()
+
+
 
     def _save_frame(self, name, df, save_index=True):
         if save_index:
@@ -778,6 +969,13 @@ class DashData:
         self._save_frame('dash_sal2sql', getter.df_sal2sql)
         self._save_frame('dash_sql2won', getter.df_sql2won)
         self._save_frame('dash_sal2won', getter.df_sal2won)
+
+    def process_cs_metrics(self):
+        getter = CSGetter()
+        self._save_frame('dash_cs_metrics', getter.df_metrics)
+        self._save_frame('dash_contract_acv', getter.df_contract_acv)
+        self._save_frame('dash_contract_months', getter.df_contract_months)
+
 
 
     def get_latest(self, name):
