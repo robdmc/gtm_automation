@@ -1,4 +1,5 @@
 import streamlit as st
+from scipy import stats
 # from streamlit import caching
 import gtmarket as gtm
 import pandas as pd
@@ -41,6 +42,8 @@ def get_frames(when):
     df_metrics = dd.get_latest('dash_cs_metrics')
     df_acv = dd.get_latest('dash_contract_acv')
     df_months = dd.get_latest('dash_contract_months')
+    df_logo_retention = dd.get_latest('dash_logo_renewals')
+
 
     def transform_to_date(df, col):
         df.loc[:, col] = df.loc[:, col].astype(np.datetime64)
@@ -49,18 +52,20 @@ def get_frames(when):
     df_metrics = transform_to_date(df_metrics, 'date')
     df_acv = transform_to_date(df_acv, 'date')
     df_months = transform_to_date(df_months, 'date')
+    df_logo_retention = transform_to_date(df_logo_retention, 'date')
 
-    return df_metrics, df_acv, df_months
+    return df_metrics, df_acv, df_months, df_logo_retention
 
 
 
 
 
 class CSPlotter:
-    def __init__(self, df_metrics, df_acv, df_months):
+    def __init__(self, df_metrics, df_acv, df_months, df_logo_rentention):
         self.df_metrics = df_metrics
         self.df_acv = df_acv
         self.df_months = df_months
+        self.df_logo_retention = df_logo_rentention
         
     def _plot_time_series(self, df, col, label, final_values, units='', multiplier=1):
         name_mapper = {k: f'{k} {v:0.1f}{units}'.strip() for (k, v) in final_values.items()}
@@ -110,88 +115,30 @@ class CSPlotter:
         final_values = self._get_final_values(df, col, multiplier=-1)
         c_churn = self._plot_time_series(df, col, label, final_values, units=units, multiplier=-1)
         return c_ndr, c_ex, c_ren, c_red, c_churn
-
-        
-        # return hv.Layout(c_list)#.cols(1).options(shared_axes=False)
     
-    def plot_duration_time_series(self):
-    
-        # def dollar_weighted_duration(op, now):
-        #     # Now is the date for which you want to compute metrics
-        #     now = pd.Timestamp(now)
+    def _plot_logo_retention_for_segment(self, df, segment, color):
+        df = df[df.market_segment == segment].copy()
+        df.loc[:, 'date'] = df.date.astype(np.datetime64)
+        df = df.set_index('date')
+        dist = stats.beta(a=df.retained.values + 1, b=df.churned.values + 1)
+        df['lower'], df['best'], df['upper'] = dist.ppf(.1), dist.ppf(.5), dist.ppf(.9)
+        df.loc[:, ['lower', 'best', 'upper']] = 100 * df.loc[:, ['lower', 'best', 'upper']]
 
+        c_list = []
+        c = hv.Area((df.index, df.lower, df.upper), kdims='Date', vdims=['Logo Retention Rate (%)', 'b']).options(alpha=.1, color=color)
+        c_list.append(c)
+        c = hv.Curve((df.index, df.best), label=segment).options(color=color, show_grid=True)
+        c_list.append(c)
+        return hv.Overlay(c_list).options(legend_position='top')
 
-        #     # Get all orders and standardize them
-        #     df = op.df_orders
-        #     df = df[(df.order_start_date <= now) & (df.order_ends >= now)]
-
-        #     df = df[['mrr', 'market_segment', 'months']]
-        #     df.loc[:, 'market_segment'] = [ezr.slugify(s) for s in df.market_segment]
-        #     df['weight_and_value'] = df.months * df.mrr
-        #     df['weight'] = df.mrr
-
-
-        #     dfg = df.groupby(by='market_segment')[['weight_and_value', 'weight']].sum()
-        #     dfg['duration_months'] = dfg.weight_and_value / dfg.weight
-        #     rec = dfg.duration_months.to_dict()
-        #     rec['date'] = now
-        #     return rec
-
-
-        # dates = pd.date_range('1/1/2021', datetime.datetime.now())
-
-        # rec_list = []
-        # for date in tqdm(dates):
-        #     rec_list.append(dollar_weighted_duration(self.op, date))
-        # df = pd.DataFrame(rec_list).set_index('date')
+    def get_logo_rention_plot(self):
+        df = self.df_logo_retention
+        c_list = []
+        segments = sorted(df.market_segment.unique())
+        for color, seg in zip(ezr.cc, segments):
+            c_list.append(self._plot_logo_retention_for_segment(df, seg, color))
         
-        df = self.df_months
-        renamer = {k: f'{k} {v:0.1f}' for (k, v) in df.iloc[-1, :].items()}
-        df = df.rename(columns=renamer)
-
-        return df.hvplot(ylabel='Dollar Weighted Contract Duration (months)').options(legend_position='top', show_grid=True)
-
-
-    def plot_contracted_acv(self):
-    
-        def mean_contract_acv(op, now):
-            # Now is the date for which you want to compute metrics
-            now = pd.Timestamp(now)
-
-
-            # Get all orders and standardize them
-            df = op.df_orders
-            df = df[(df.order_start_date <= now) & (df.order_ends >= now)]
-
-            df = df[['account_id', 'mrr', 'market_segment']]
-            df.loc[:, 'market_segment'] = [ezr.slugify(s) for s in df.market_segment]
-            df = df.groupby(by=['account_id', 'market_segment'])[['mrr']].sum().reset_index()
-
-            rec = (12 * df.groupby(by='market_segment').mrr.mean() / 1000).to_dict()
-            rec['date'] = now
-            return rec
-
-
-
-        dates = pd.date_range('1/1/2021', datetime.datetime.now())
-
-        rec_list = []
-        for date in tqdm(dates):
-            rec_list.append(mean_contract_acv(op, date))
-        df_ = pd.DataFrame(rec_list).set_index('date')
-
-        df = df_.copy()
-        renamer = {k: f'{k} {v:0.1f}K' for (k, v) in df.iloc[-1, :].items()}
-        df = df.rename(columns=renamer)
-
-        c_abs = df.hvplot(ylabel='ACV per Deal $K').options(legend_position='top', show_grid=True, width=450)
-        
-        df= df_.copy()
-        df = 100 * (df / df.iloc[0, :] - 1)
-        renamer = {k: f'{k} {v:0.1f}%' for (k, v) in df.iloc[-1, :].items()}
-        df = df.rename(columns=renamer)
-        c_rel = df.hvplot(ylabel='Percent Change in ACV per Deal').options(legend_position='top', show_grid=True, width=450)
-        return hv.Layout([c_abs, c_rel]).cols(2).options(shared_axes=False)  
+        return hv.Overlay(c_list).options(legend_position='top')
     
     def plot(self):
         display(self.plot_ndr_time_series())
@@ -199,24 +146,17 @@ class CSPlotter:
         display(self.plot_contracted_acv())
 
 
-
-
-
-
 as_of = get_latest_date(get_when())
-df_metrics, df_acv, df_months = get_frames(get_when())
+df_metrics, df_acv, df_months, df_logo_retention = get_frames(get_when())
 
 
 st.title('CS Trends')
 st.markdown(f'### as of {as_of}')
-# st.write(df_metrics)
-# st.write(df_acv)
-# st.write(df_months)
-plotter = CSPlotter(df_metrics, df_acv, df_months)
-# plotter.plot_ndr_time_series()
+plotter = CSPlotter(df_metrics, df_acv, df_months, df_logo_retention)
 
 
 c_ndr, c_ex, c_ren, c_red, c_churn = plotter.get_retention_plots()
+c_logo_ret = plotter.get_logo_rention_plot()
 
 st.markdown('---')
 st.markdown(f'## Net Dollar Retention')
@@ -252,7 +192,7 @@ with st.expander("See explanation"):
 display(c_ex)
 
 st.markdown('---')
-st.markdown(f'## Gross Revenue Churn')
+st.markdown(f'## Gross Churn')
 with st.expander("See explanation"):
      st.markdown("""
          This is ...
@@ -278,3 +218,34 @@ with st.expander("See explanation"):
 display(c_red)
 
 
+st.markdown('---')
+st.markdown(f'## Logo Retention Rate')
+
+with st.expander("See explanation"):
+     st.markdown("""
+         This graph estimates our logo retention rate based on the previous 365 days.
+
+
+         There are so many different scenarios in managing our active customer base, that computing
+         a logo retention rate is pretty involved.  A crude sketch of the logic is this:
+         * For every order, create two events.  An "order_created" event, and an "order_expired" event.
+         * For each logo
+             * Sort the events by date
+             * Collapse all events that happen within a grace period (currently 15 days) into a single event.
+               (What this means is that if an order expires, and nine days later a new order is created, we will
+               fake the event associated with the new order created to match the date of the previous order expiration).
+               This is only done in the volatile computation of events and the result is not stored anywhere.
+             * Compare the pre-post MRR for each event to determine if the logo got expanded, reduced, or stayed the
+               same (renewed).
+             * Run additional checks to mark reduced orders as churned if the order was marked as churned.
+         * Then, using these collapsed dates
+             * Loop over all dates.
+             * Count how many churned and non-churned events happened in the past 365 days
+             * Use these counts to determine the beta distribution defined by the "win" and "lost" counts.
+             * Use the quantiles `[0.1, 0.5, 0.9]` to determine the best estimate and uncertaines of the logo renewal rate.
+
+
+
+     """)
+
+display(c_logo_ret)

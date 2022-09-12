@@ -853,6 +853,48 @@ class CSGetter(ezr.pickle_cache_mixin):
         return df
 
 
+    def _compute_logo_churn_timeseries(df):
+        df = df.pivot_table(index='date', columns='outcome', values='num').fillna(0)
+        df = df.resample('D').asfreq().fillna(0)
+        df = df.rolling(365).sum().dropna()
+        df['total'] = df.sum(axis=1)
+        df['logo_retention'] = df.retained / df.total
+        df = df.loc[:datetime.datetime.now(), :]
+        return df
+    
+    @ezr.cached_container
+    def df_logo_changes(self):
+        df = self.op.df_changes
+        df = df[['date', 'outcome', 'market_segment']].copy()
+        df.loc[:, 'outcome'] = [(v if v == 'churned' else 'retained') for v in df.outcome]
+        df['num'] = 1
+        return df
+        
+    @ezr.cached_container
+    def segments(self):
+        return sorted(self.df_logo_changes.market_segment.unique())
+    
+    @ezr.cached_container
+    def df_logo_renewals(self):
+        df_list = []
+        for market_segment, batch in self.df_logo_changes.groupby('market_segment'):
+            batch = batch.sort_values('date')
+            df = self._compute_logo_churn_timeseries_for_segment(batch)
+            df.insert(0, 'market_segment', market_segment)
+            df_list.append(df)
+        
+        df = pd.concat(df_list, axis=0, ignore_index=True, sort=False)
+        df = df.sort_values(by=['market_segment', 'date'])
+        return df
+    
+    
+    def _compute_logo_churn_timeseries_for_segment(self, df):
+        df = df.pivot_table(index='date', columns=['outcome'], values='num').fillna(0)
+        df = df.resample('D').asfreq().fillna(0)
+        df = df.rolling(365).sum().dropna()
+        df = df.loc[:datetime.datetime.now(), :]
+        df.columns.name = None
+        return df.reset_index()  
 
 
 
@@ -975,6 +1017,7 @@ class DashData:
         self._save_frame('dash_cs_metrics', getter.df_metrics)
         self._save_frame('dash_contract_acv', getter.df_contract_acv)
         self._save_frame('dash_contract_months', getter.df_contract_months)
+        self._save_frame('dash_logo_renewals', getter.df_logo_renewals, save_index=False)
 
 
 
