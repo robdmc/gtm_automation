@@ -908,7 +908,7 @@ class DashData:
                 logger.info(f'running: {method}')
                 getattr(self, method)()
         except:
-             raise
+            raise
         finally:
             self._disable_caches()
             self._clear_caches()
