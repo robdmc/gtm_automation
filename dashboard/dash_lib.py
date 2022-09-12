@@ -1,34 +1,35 @@
-import io
-import streamlit as st
-# from streamlit import caching
-import gtmarket as gtm
-import pandas as pd
-import numpy as np
-import fleming
-import datetime
-import copy
-import locale
-locale.setlocale(locale.LC_ALL, 'en_US')
-import easier as ezr
 from dateutil.relativedelta import relativedelta
 from gtmarket.predictor import spread_values
-import holoviews as hv
-import itertools
-hv.extension('bokeh')
 from holoviews import opts
+import datetime
+import easier as ezr
+import fleming
+import gtmarket as gtm
+import holoviews as hv
+import io
+import itertools
+import locale
+import numpy as np
+import pandas as pd
+import streamlit as st
+
+locale.setlocale(locale.LC_ALL, 'en_US')
+hv.extension('bokeh')
 opts.defaults(opts.Area(width=800, height=400), tools=[])
 opts.defaults(opts.Curve(width=800, height=400, tools=['hover']))
 
 logger = ezr.get_logger('dash_data_runner')
 
-USE_PG=True
+USE_PG = True
 
 
 def get_when():
     return fleming.floor(datetime.datetime.now(), hour=1)
 
+
 def display(hv_obj):
     st.write(hv.render(hv_obj, backend='bokeh'))
+
 
 def float_to_dollars(val):
     return locale.currency(val, grouping=True).split('.')[0]
@@ -37,8 +38,10 @@ def float_to_dollars(val):
 def to_dollars(ser):
     return [float_to_dollars(x) for x in ser]
 
+
 def to_percent(ser):
     return ['-' if x == '-' else f'{x}%' for x in ser]
+
 
 def convert_dataframe(df):
     return df.to_csv().encode('utf-8')
@@ -75,51 +78,51 @@ def plot_frame(df, alpha=1, use_label=True, units='', include_total=True, ylabel
 class BlobPrinter():
     def __init__(self):
         self.ps = gtm.PipeStats()
-    
+
     @ezr.cached_container
     def _blob(self):
-        
+
         mph = gtm.ModelParamsHist(use_pg=USE_PG)
         pm = mph.get_latest()
         blob = pm.to_blob()
         return blob
-    
+
     @ezr.cached_container
     def blob(self):
         blob = self._blob
         for key in [
-            'existing_pipe_model_with_expansion',            
-            'existing_pipe_model']:
+                'existing_pipe_model_with_expansion',
+                'existing_pipe_model']:
             blob.pop(key)
         return blob
-
 
     def get_frames(self):
         ps = self.ps
         # return self.ps.get_opp_timeseries('num_sals', interval_days=30)
-        ser_sal2sql = (100 * ps.get_conversion_timeseries('sal2sql_opps', interval_days=90, bake_days=30)).round(1).iloc[-1]
-        ser_sql2win = (100 * ps.get_conversion_timeseries('sql2won_opps', interval_days=365, bake_days=90)).round(1).iloc[-1]
-        ser_sal2win = (100 * ps.get_conversion_timeseries('sal2won_opps', interval_days=365, bake_days=90)).round(1).iloc[-1]
-        
+        ser_sal2sql = (100 * ps.get_conversion_timeseries(
+            'sal2sql_opps', interval_days=90, bake_days=30)).round(1).iloc[-1]
+        ser_sql2win = (100 * ps.get_conversion_timeseries(
+            'sql2won_opps', interval_days=365, bake_days=90)).round(1).iloc[-1]
+        ser_sal2win = (100 * ps.get_conversion_timeseries(
+            'sal2won_opps', interval_days=365, bake_days=90)).round(1).iloc[-1]
+
         ser = ps.get_opp_timeseries('num_sals', interval_days=30).iloc[-1, :]
         ser['total'] = ser.sum()
         dfs = pd.DataFrame({'SALS / month': ser}).round().astype(int)
-        
-        
+
         dfd = (pd.DataFrame({'ACV': ps.get_mean_deal_size_timeseries().iloc[-1, :]})).round(1)
         dfd = dfd.loc[['enterprise', 'commercial', 'velocity'], :]
-        
-        
+
         dfwr = pd.DataFrame({
             'SAL⮕SQL': ser_sal2sql,
             'SQL⮕WON': ser_sql2win,
             'SAL⮕WON': ser_sal2win,
         })
-        
+
         ser = (100 * ps.get_stage_win_rates_timeseries(interval_days=365, bake_days=90).iloc[-1, :]).round(1)
         ser = ser[['SAL', 'Discovery', 'Demo', 'Proposal', 'Negotiation']]
-        dfswr = pd.DataFrame({'Win rate by stage': ser})        
-        
+        dfswr = pd.DataFrame({'Win rate by stage': ser})
+
         today = fleming.floor(datetime.datetime.now(), day=1)
         dfo = ps.op.df_orders
         dfo.loc[:, 'market_segment'] = [ezr.slugify(m) for m in dfo.market_segment]
@@ -129,24 +132,25 @@ class BlobPrinter():
         ser = ser[['commercial', 'enterprise', 'velocity']]
         ser['combined'] = ser.sum()
         dfr = pd.DataFrame({'Current ARR': ser})
-        
+
         dfn = ps.op.get_ndr_metrics()
-        dfn = dfn[dfn.variable.isin(['ndr', 'renewed_pct', 'expanded_pct'])].set_index(['market_segment', 'variable'])[['value']].unstack('variable')
+        dfn = dfn[dfn.variable.isin(['ndr', 'renewed_pct', 'expanded_pct'])].set_index(
+            ['market_segment', 'variable'])[['value']].unstack('variable')
         dfn.columns = dfn.columns.get_level_values(1)
         dfn = dfn.rename(columns={
             'ndr': '12-month NDR',
             'renewed_pct': '12-month Gross Retention',
-            'expanded_pct': '12-month Expansion',
-            })
+            'expanded_pct': '12-month Expansion', })
         dfn = dfn.loc[
             ['commercial', 'enterprise', 'velocity', 'combined'],
-            ['12-month Gross Retention', '12-month Expansion',  '12-month NDR']
+            ['12-month Gross Retention', '12-month Expansion', '12-month NDR']
         ].round(1)
-        
-        dft = ps.get_conversion_timeseries('sal2won_time', interval_days=365, bake_days=90).iloc[[-1], :].round().astype(int).T
+
+        dft = ps.get_conversion_timeseries(
+            'sal2won_time', interval_days=365, bake_days=90).iloc[[-1], :].round().astype(int).T
         dft.columns = ['Days to Win']
-        dft.index.name = None      
-        
+        dft.index.name = None
+
         df_sales = dfs
         df_sales = df_sales.join(dfwr).drop('total')
         df_sales = df_sales.join(dft)
@@ -154,23 +158,22 @@ class BlobPrinter():
         sal_val = (.01 * df_sales['SAL⮕WON'] * df_sales['ACV']).round().astype(int)
         sql_val = (.01 * df_sales['SQL⮕WON'] * df_sales['ACV']).round().astype(int)
         value_rate = sal_val * df_sales['SALS / month']
-        
-        
+
         df_sales['SAL Val'] = to_dollars(sal_val)
-        df_sales['SQL Val'] = to_dollars(sql_val) #[locale.currency(x, grouping=True).split('.')[0] for x in sql_val]
-        df_sales.loc[:, 'ACV'] = to_dollars(df_sales.ACV) #[locale.currency(x, grouping=True).split('.')[0] for x in df_sales.ACV]
-        df_sales.loc[:, 'SAL Value / Month'] = to_dollars(value_rate) #[locale.currency(x, grouping=True).split('.')[0] for x in value_rate]
-        
+        df_sales['SQL Val'] = to_dollars(sql_val)
+        df_sales.loc[:, 'ACV'] = to_dollars(df_sales.ACV)
+        df_sales.loc[:, 'SAL Value / Month'] = to_dollars(value_rate)
+
         for col in dfwr.columns:
             df_sales.loc[:, col] = to_percent(df_sales.loc[:, col])
-        
+
         df_arr = dfr
         df_arr = df_arr.join(dfn)
         df_arr = df_arr.fillna('-')
         monthly_rate = (.01 * df_arr['12-month NDR']) ** (1 / 12) - 1
         # display(df_arr)
         df_arr['Value / Month'] = df_arr['Current ARR'] * monthly_rate
-        
+
         df_arr.loc[:, 'Current ARR'] = to_dollars(df_arr['Current ARR'])
         df_arr.loc[:, '12-month Gross Retention'] = to_percent(df_arr.loc[:, '12-month Gross Retention'])
         df_arr.loc[:, '12-month Expansion'] = to_percent(df_arr.loc[:, '12-month Expansion'])
@@ -183,23 +186,6 @@ class BlobPrinter():
         return df_sales, dfswr, df_arr
 
 
-# def _get_forecast_frames():
-#     bp = BlobPrinter()
-#     return bp.get_frames()
-
-
-
-# def get_prediction_history(when):
-#     today = fleming.floor(datetime.datetime.now(), day=1)
-#     ending_exclusive = '1/1/2023'
-#     since = '1/1/2022'
-
-#     pg = PredictorGetter()
-
-#     dfh = pg.get_prediction_history(since=since, ending_exclusive=ending_exclusive,  units='m')
-#     return dfh
-
-
 class PredictorGetter:
     def __init__(self, pipe_stats_obj=None, include_sales_expansion=True):
         if pipe_stats_obj is None:
@@ -207,13 +193,13 @@ class PredictorGetter:
         self.ps = pipe_stats_obj
         self.include_sales_expansion = include_sales_expansion
         self.mph = gtm.ModelParamsHist(use_pg=USE_PG)
-        
+
     def get_predicted_revenue(self, starting=None, ending_exclusive=None):
         if starting is None:
             starting = datetime.datetime.now()
-            
+
         starting = pd.Timestamp(starting)
-        starting = fleming.floor(starting, day=1)        
+        starting = fleming.floor(starting, day=1)
         if ending_exclusive is None:
             ending_exclusive = starting + relativedelta(years=1)
         ending_exclusive = pd.Timestamp(ending_exclusive)
@@ -226,13 +212,13 @@ class PredictorGetter:
 
         )
         return deals.df_predicted
-    
+
     @ezr.cached_container
     def _df_won(self):
         ps = gtm.PipeStats(pilots_are_new_biz=True, sales_expansion_are_new_biz=self.include_sales_expansion)
         df = ps.get_opp_timeseries(value='deal_acv', cumulative_since='12/31/2020')
         return df
-        
+
     def get_won_revenue(self, starting=None, ending_inclusive=None):
         today = fleming.floor(datetime.datetime.now(), day=1)
         if ending_inclusive is None:
@@ -243,7 +229,7 @@ class PredictorGetter:
         ending_inclusive = pd.Timestamp(ending_inclusive)
         if starting < pd.Timestamp('1/1/2020'):
             raise ValueError('Can only get revenue since 1/1/2020')
-        
+
         df = self._df_won
         df = df.loc[starting - relativedelta(days=1):ending_inclusive, :].sort_index()
         df = df - df.iloc[0, :]
@@ -252,7 +238,7 @@ class PredictorGetter:
         df = df.reindex(index=ind)
         df = df.fillna(method='ffill')
         return df
-    
+
     def get_forecast(self, since=None, today=None, ending_exclusive=None, separate_past_future=False):
         if today is None:
             today = fleming.floor(datetime.datetime.now(), day=1)
@@ -260,18 +246,16 @@ class PredictorGetter:
             since = fleming.floor(today, year=1)
         if ending_exclusive is None:
             ending_exclusive = today + relativedelta(years=1)
-            
+
         since, today, ending_exclusive = map(pd.Timestamp, [since, today, ending_exclusive])
         tomorrow = today + relativedelta(days=1)
-            
-        
+
         dfw = self.get_won_revenue(starting=since, ending_inclusive=today)
         dff = self.get_predicted_revenue(starting=tomorrow, ending_exclusive=ending_exclusive)
-        # dff = dff + dfw.iloc[-1, :]
-        
+
         dfw = dfw.loc[since:ending_exclusive, :]
         dff = dff.loc[since:ending_exclusive, :]
-        
+
         if separate_past_future:
             return dfw, dff
         else:
@@ -283,18 +267,19 @@ class PredictorGetter:
         mph = gtm.ModelParamsHist(use_pg=USE_PG)
         df = mph.get_history()
         return df
-        
-    def get_prediction_history(self, since=None, ending_exclusive=None,  units='m'):
+
+    def get_prediction_history(self, since=None, ending_exclusive=None, units='m'):
         df = self.df_model_param_history
         min_time, max_time = [fleming.floor(d, day=1) for d in [df.time.min(), df.time.max()]]
-        
+
         dates = pd.date_range(min_time, max_time)
         predictions = []
         for today in dates:
-            dfw, dff = self.get_plot_frames_for_span(since=since, today=today, ending_exclusive=ending_exclusive, units=units)
+            dfw, dff = self.get_plot_frames_for_span(
+                since=since, today=today, ending_exclusive=ending_exclusive, units=units)
             dff = dff + dfw.iloc[-1]
             predictions.append(dff.iloc[-1, :].sum())
-            
+
         dfp = pd.DataFrame({'acv': predictions}, index=dates)
         ind = pd.date_range(dfp.index[0], ending_exclusive, inclusive='left')
         dfp = dfp.reindex(ind).fillna(method='ffill')
@@ -302,28 +287,28 @@ class PredictorGetter:
 
     def get_plot_frames_for_span(self, since=None, today=None, ending_exclusive=None, units='m'):
         units = units.lower()
-            
+
         units_lookup = {
             'k': 1000,
             'm': 1e6,
             'u': 1,
         }
-        
+
         scale = units_lookup[units]
-        
-        dfw, dff = self.get_forecast(since=since, today=today, ending_exclusive=ending_exclusive, separate_past_future=True)
+
+        dfw, dff = self.get_forecast(
+            since=since, today=today, ending_exclusive=ending_exclusive, separate_past_future=True)
         if not dff.empty:
             dfft = dff.T
             dfft.loc[:, dfw.index[-1]] = dfw.iloc[-1, :]
             dff = dfft.T.sort_index()
-        
+
         dff = dff / scale
-        dfw = dfw /  scale
+        dfw = dfw / scale
 
         # dfh = self.get_prediction_history(since=since, ending_exclusive=ending_exclusive, units=units)
-        return dfw, dff#, dfh
+        return dfw, dff  # , dfh
 
-    
     def get_plot_frames(self, since=None, today=None, ending_exclusive=None, units='m'):
         units_lookup = {
             'k': 1000,
@@ -331,30 +316,28 @@ class PredictorGetter:
             'u': 1,
         }
         scale = units_lookup[units]
-        dfw, dff = self.get_forecast(since=since, today=today, ending_exclusive=ending_exclusive, separate_past_future=True)
+        dfw, dff = self.get_forecast(
+            since=since, today=today, ending_exclusive=ending_exclusive, separate_past_future=True)
         dff = dff / scale
         dfw = dfw / scale
         dfh = self.get_prediction_history(since=since, ending_exclusive=ending_exclusive, units=units)
         return dfw, dff, dfh
 
 
-
 class NDRGetter:
     def __init__(self):
         self.op = gtm.OrderProducts()
         self.ps = gtm.PipeStats()
-        
+
     def _get_metrics(self, now, months=12):
         """
         Returns comparison metrics for the state of orders "now" compared to "months" ago
         """
         df = self.op.get_ndr_metrics(months=months, now=now)
         df.insert(0, 'date', now)
-        
+
         return df
 
-
-    
     @ezr.cached_container
     def df_metrics(self):
         dates = pd.date_range('1/1/2021', datetime.datetime.now())
@@ -382,9 +365,9 @@ class CSExpansion(ezr.pickle_cache_mixin):
         self.today = pd.Timestamp(today)
         if ending_exclusive is None:
             ending_exclusive = self.today + relativedelta(years=1)
-            
+
         self.ending = pd.Timestamp(ending_exclusive) - relativedelta(days=1)
-        
+
     @ezr.cached_container
     def expansion_rate(self):
         # This gets the average expansion rate for existing contracted mrr
@@ -395,72 +378,71 @@ class CSExpansion(ezr.pickle_cache_mixin):
         then = fleming.floor(datetime.datetime.now(), day=1) - relativedelta(years=1)
         dfx = dfx.loc[then:, :].drop('combined', axis=1)
         exp_ser = .01 * dfx.mean()
-        return exp_ser   
-    
+        return exp_ser
+
     @ezr.cached_container
     def df_cs_expansion(self):
         df = self.ps.loader.df_all
         df = df[df.created_date >= '1/1/2021']
         df = df[df.type == 'CS Expansion']
         return df
-    
+
     @ezr.cached_container
     def df_cs_expansion_open(self):
         df = self.df_cs_expansion
         df = df[df.status_code == 0]
         df = df[df.acv.notnull()]
-        
+
         # Ignore stuff with close dates in the past
         last_week = self.today - relativedelta(weeks=1)
         df = df[df.close_date >= last_week]
-        
+
         # If the opp was opened after "today", I shouldn't know about it
         df = df[df.created_date <= self.today]
-        
+
         # 90% of all won expansion opps closed within 90 days, so ignore opps set to close a long time from opening
         df['expected_days_open'] = (df.close_date - df.created_date).dt.days
         df = df[df.expected_days_open <= 90]
-        
+
         return df
-    
+
     @ezr.cached_container
     def win_rate(self):
         # Get the win rate of cs expansion opps
         df = self.df_cs_expansion
         df = df[df.status_code != 0]
-        dfx = df.copy()
         df = df.groupby(by=['market_segment', 'status_code'])[['opportunity_id']].count().unstack('status_code')
         df.columns = df.columns.get_level_values(1)
         df['win_rate'] = df.loc[:, 2] / df.sum(axis=1)
         ser_win_rate = df.win_rate
         return ser_win_rate
-    
+
     @ezr.cached_container
     def expanding_account_set(self):
         df = self.df_cs_expansion_open
         accounts = df.account_id.drop_duplicates()
         return set(accounts)
-    
+
     @ezr.cached_container
     def df_cs_expansion_expected_from_pipe(self):
         df = self.df_cs_expansion_open
         df = df[['opportunity_name', 'market_segment', 'close_date', 'acv', 'expected_days_open', 'stage']]
         df['discounted_acv'] = df.market_segment.map(self.win_rate) * df.acv
-        
-        df = df.groupby(by=['close_date', 'market_segment'])[['discounted_acv']].sum().unstack('market_segment').fillna(0)
+
+        df = df.groupby(
+            by=['close_date', 'market_segment'])[['discounted_acv']].sum().unstack('market_segment').fillna(0)
         df.columns = df.columns.get_level_values(1)
         return df
-    
+
     @ezr.cached_container
     def df_cs_expansion_from_current_orders(self):
         dfo = self.ps.op.df_orders
         dfo = dfo[['account_id', 'order_start_date', 'market_segment', 'mrr']]
-        
+
         # Ignore contributions for accounts with open axpansion opps
         dfo = dfo[~dfo.account_id.isin(self.expanding_account_set)]
-        
-        dfo['acv'] = 12 * dfo.mrr
 
+        dfo['acv'] = 12 * dfo.mrr
 
         dfo = dfo.groupby(by=['order_start_date', 'market_segment'])[['acv']].sum().unstack('market_segment').fillna(0)
         dfo.columns = [ezr.slugify(c) for c in dfo.columns.get_level_values(1)]
@@ -474,9 +456,9 @@ class CSExpansion(ezr.pickle_cache_mixin):
         for col in dfo.columns:
             dfo.loc[:, col] = spread_values(dfo.loc[:, col] * self.expansion_rate[col], 1 * 365)
 
-        dfo = dfo.loc[self.today:, :].cumsum()    
+        dfo = dfo.loc[self.today:, :].cumsum()
         return dfo
-    
+
     @ezr.pickle_cached_container()
     def df_cs_expansion_forecast(self):
         dfo = self.df_cs_expansion_from_current_orders
@@ -484,10 +466,10 @@ class CSExpansion(ezr.pickle_cache_mixin):
         dfp = dfp.reindex(dfo.columns, axis=1).fillna(0)
         dfp = dfp.reindex(dfo.index).fillna(0)
         dfp = dfp.cumsum()
-        
+
         dfo = dfo + dfp
         return dfo
-    
+
 
 class ARRGetter(ezr.pickle_cache_mixin):
 
@@ -501,14 +483,13 @@ class ARRGetter(ezr.pickle_cache_mixin):
         if starting is None:
             starting = fleming.floor(self.today, year=1)
         self.starting = starting
-        
+
         if ending_exclusive is None:
             ending_exclusive = self.starting + relativedelta(years=1)
         self.ending_exclusive = pd.Timestamp(ending_exclusive)
         self.ending_inclusive = self.ending_exclusive - relativedelta(days=1)
         self.mph = gtm.ModelParamsHist(use_pg=USE_PG)
-        
-        
+
     def _get_new_biz_frame(self, today, ending_exclusive):
         deals = gtm.Deals(
             starting=today,
@@ -518,22 +499,19 @@ class ARRGetter(ezr.pickle_cache_mixin):
             model_params_hist=self.mph
         )
         return deals.df_predicted
-        
+
     @ezr.cached_container
     def df_new_biz(self):
         return self._get_new_biz_frame(today=self.today, ending_exclusive=self.ending_exclusive)
-        
+
     def get_arr_history_frame(self, today=None):
         if today is None:
             today = self.today
         today = pd.Timestamp(today)
-        
+
         # Use the cs plotter to get average of last 30 days of NDR
-        # dfm = self.cs_plotter.df_metrics
-        # dfm = get_ndr_metrics(get_when())
         dfm = NDRGetter().df_metrics
-        
-        
+
         # Based on yearly NDR, compute an exponential time constant for each segment
         dfm = dfm[dfm.variable == 'ndr']
         dfm = .01 * dfm.pivot(index='date', columns='market_segment', values='value')
@@ -544,25 +522,26 @@ class ARRGetter(ezr.pickle_cache_mixin):
         # dfo = self.cs_plotter.op.df_orders
         dfo = self.ps.op.df_orders
         dfo.loc[:, 'market_segment'] = [ezr.slugify(m) for m in dfo.market_segment]
-        
+
         # Make a range of dates from starting till today
         dates = pd.date_range(self.starting, today)
-        
+
         # Populate each day with the amount of ARR on that day
         rec_list = []
         for date in dates:
             rec = {'date': date}
-            batch = dfo[(dfo.order_start_date<=date) & (dfo.order_ends > date)]
+            batch = dfo[(dfo.order_start_date <= date) & (dfo.order_ends > date)]
             rec.update((12 * batch.groupby(by='market_segment').mrr.sum()).to_dict())
             rec_list.append(rec)
 
         # Make a frame out of the ARR
         df = pd.DataFrame(rec_list)
         df = df.set_index('date')
-        
+
         # Extend the frame one year out into the future
-        df = df.reindex(pd.date_range(self.starting, self.ending_inclusive, name='date')).fillna(method='ffill').reset_index()
-        
+        df = df.reindex(
+            pd.date_range(self.starting, self.ending_inclusive, name='date')).fillna(method='ffill').reset_index()
+
         # Compute how many days into the future each day corresponds to
         df['days'] = np.maximum(0, (df.date - today).dt.days)
         segments = [c for c in df.columns if c not in ['days', 'date']]
@@ -579,10 +558,9 @@ class ARRGetter(ezr.pickle_cache_mixin):
     @ezr.cached_container
     def df_arr_history(self):
         return self.get_arr_history_frame()
-    
-    
+
     def get_prediction_history_frame(self):
-        
+
         rec_list = []
         for date in pd.date_range('6/2/2022', self.today):
             dfc = self.get_arr_history_frame(today=date)
@@ -596,39 +574,37 @@ class ARRGetter(ezr.pickle_cache_mixin):
             # It's important you create a fresh csx here, so that it's anchored to date
             csx = CSExpansion(self.ps, self.cs_plotter, date, ending_exclusive=self.ending_exclusive)
             dfx = csx.df_cs_expansion_forecast
-            
-            
+
             current_arr = dfc.loc[self.ending_inclusive, :]
             rec = current_arr
-                
+
             rec = rec + dfp.loc[self.ending_inclusive, :]
             rec = rec + dfx.loc[self.ending_inclusive, :]
             rec['date'] = date
-            
+
             rec_list.append(rec)
-            
-        dfh =  pd.DataFrame(rec_list).set_index('date').sort_index()
+
+        dfh = pd.DataFrame(rec_list).set_index('date').sort_index()
         dfh = pd.DataFrame({'arr': dfh.sum(axis=1)})
         return dfh
-        
+
     @ezr.pickle_cached_container()
     def df(self):
         dfc = self.df_arr_history
         dfn = self.df_new_biz
         dfn = dfn.reindex(dfc.index).fillna(0)
-        
 
         dfx = CSExpansion(today=self.today, ending_exclusive=self.ending_exclusive).df_cs_expansion_forecast
         dfx = dfx.loc[dfx.index[0]:dfx.index[-1]]
         dfx = dfx.reindex(dfc.index).fillna(0)
-        
+
         df = dfn + dfc + dfx
         return df
+
 
 @st.cache
 def get_arr_timeseries(when, starting=None, ending_exclusive=None):
     return ARRGetter(starting=starting, ending_exclusive=ending_exclusive).df
-
 
 
 class SALGetter:
@@ -637,11 +613,11 @@ class SALGetter:
             self.ps = gtm.PipeStats()
         else:
             self.ps = pipe_stats_obj
-            
+
     @ezr.pickle_cached_container()
     def df_daily_actuals(self):
         starting, ending = pd.Timestamp('1/1/2022'), fleming.floor(datetime.datetime.now(), day=1)
-        
+
         ps = self.ps
         dfa = ps.df_new_biz
         dfa = dfa[['created_date', 'market_segment']]
@@ -652,7 +628,7 @@ class SALGetter:
         ind = pd.date_range(starting, ending, freq='D', name='created_date')
         dfa = dfa.reindex(index=ind, fill_value=0)
         return dfa
-    
+
     def get_rolling_created(self, rolling_days=30, smoothing_degree=15):
         df = self.df_daily_actuals
         cols = list(df.columns)
@@ -662,33 +638,31 @@ class SALGetter:
         df = df.rolling(rolling_days).sum().dropna()
         fitter = ezr.BernsteinFitter(monotonic=False, match_left=False, match_right=False, non_negative=True)
         for col in cols:
-            df.loc[:, col+'_fit'] = fitter.fit_predict(df.loc[:, 'days'], df.loc[:, col].values, smoothing_degree)
-        df = df.drop(['days', 'weekday'], axis=1)            
+            df.loc[:, col + '_fit'] = fitter.fit_predict(df.loc[:, 'days'], df.loc[:, col].values, smoothing_degree)
+        df = df.drop(['days', 'weekday'], axis=1)
         return df
-    
-    
+
 
 class RateGetter:
     def __init__(self, pipe_stats_obj=None):
         if pipe_stats_obj is None:
             pipe_stats_obj = gtm.PipeStats()
         self.ps = pipe_stats_obj
-        
+
     def _get_single_conversion(self, rate_name, bake_days=30, interval_days=90):
         ps = self.ps
-        today = fleming.floor(datetime.datetime.now(), day=1)
         dfc = ps.get_conversion_timeseries(rate_name, interval_days, bake_days=bake_days) * 100
         dfc = dfc.loc['1/1/2021':, :]
         return dfc
-    
+
     @ezr.cached_container
     def df_sal2sql(self):
         return self._get_single_conversion('sal2sql_opps', bake_days=30, interval_days=90)
-        
+
     @ezr.cached_container
     def df_sql2won(self):
         return self._get_single_conversion('sql2won_opps', bake_days=90, interval_days=365)
-    
+
     @ezr.cached_container
     def df_sal2won(self):
         return self._get_single_conversion('sal2won_opps', bake_days=90, interval_days=365)
@@ -701,7 +675,7 @@ class CSGetter(ezr.pickle_cache_mixin):
     def __init__(self, months=12):
         self.op = gtm.OrderProducts()
         self.months = months
-        
+
     def _get_metrics(self, now, months=12):
         """
         Returns comparison metrics for the state of orders "now" compared to "months" ago
@@ -729,7 +703,8 @@ class CSGetter(ezr.pickle_cache_mixin):
         df_then = agg_by_account(df_then)
 
         # Join the accounts that existed "then" with what exists "now".  Fill revenue with 0 if they don't exist "now"
-        dfj = pd.merge(df_then, df_now, on=['account_id', 'market_segment'], how='left', suffixes=['_ref', '_ret']).fillna(0)
+        dfj = pd.merge(
+            df_then, df_now, on=['account_id', 'market_segment'], how='left', suffixes=['_ref', '_ret']).fillna(0)
 
         # This is the base from which we will compute all metrics
         dfj['base'] = dfj.mrr_ref
@@ -773,7 +748,7 @@ class CSGetter(ezr.pickle_cache_mixin):
         dfg = pd.melt(dfg, id_vars=['market_segment'])
         dfg.insert(0, 'date', now)
         return dfg
-    
+
     @ezr.pickle_cached_container()
     def df_metrics(self):
         dates = pd.date_range('1/1/2021', datetime.datetime.now())
@@ -786,14 +761,12 @@ class CSGetter(ezr.pickle_cache_mixin):
         df = df.set_index(['date', 'market_segment', 'variable'])
         return df
 
-
     @ezr.pickle_cached_container()
     def df_contract_months(self):
-    
+
         def dollar_weighted_duration(op, now):
             # Now is the date for which you want to compute metrics
             now = pd.Timestamp(now)
-
 
             # Get all orders and standardize them
             df = op.df_orders
@@ -804,13 +777,11 @@ class CSGetter(ezr.pickle_cache_mixin):
             df['weight_and_value'] = df.months * df.mrr
             df['weight'] = df.mrr
 
-
             dfg = df.groupby(by='market_segment')[['weight_and_value', 'weight']].sum()
             dfg['duration_months'] = dfg.weight_and_value / dfg.weight
             rec = dfg.duration_months.to_dict()
             rec['date'] = now
             return rec
-
 
         dates = pd.date_range('1/1/2021', datetime.datetime.now())
 
@@ -823,11 +794,10 @@ class CSGetter(ezr.pickle_cache_mixin):
 
     @ezr.pickle_cached_container()
     def df_contract_acv(self):
-    
+
         def mean_contract_acv(now):
             # Now is the date for which you want to compute metrics
             now = pd.Timestamp(now)
-
 
             # Get all orders and standardize them
             df = self.op.df_orders
@@ -841,17 +811,14 @@ class CSGetter(ezr.pickle_cache_mixin):
             rec['date'] = now
             return rec
 
-
-
         dates = pd.date_range('1/1/2021', datetime.datetime.now())
 
         rec_list = []
         for date in dates:
             rec_list.append(mean_contract_acv(date))
         df = pd.DataFrame(rec_list).set_index('date').round()
-        
-        return df
 
+        return df
 
     def _compute_logo_churn_timeseries(df):
         df = df.pivot_table(index='date', columns='outcome', values='num').fillna(0)
@@ -861,7 +828,7 @@ class CSGetter(ezr.pickle_cache_mixin):
         df['logo_retention'] = df.retained / df.total
         df = df.loc[:datetime.datetime.now(), :]
         return df
-    
+
     @ezr.cached_container
     def df_logo_changes(self):
         df = self.op.df_changes
@@ -869,11 +836,11 @@ class CSGetter(ezr.pickle_cache_mixin):
         df.loc[:, 'outcome'] = [(v if v == 'churned' else 'retained') for v in df.outcome]
         df['num'] = 1
         return df
-        
+
     @ezr.cached_container
     def segments(self):
         return sorted(self.df_logo_changes.market_segment.unique())
-    
+
     @ezr.cached_container
     def df_logo_renewals(self):
         df_list = []
@@ -882,26 +849,23 @@ class CSGetter(ezr.pickle_cache_mixin):
             df = self._compute_logo_churn_timeseries_for_segment(batch)
             df.insert(0, 'market_segment', market_segment)
             df_list.append(df)
-        
+
         df = pd.concat(df_list, axis=0, ignore_index=True, sort=False)
         df = df.sort_values(by=['market_segment', 'date'])
         return df
-    
-    
+
     def _compute_logo_churn_timeseries_for_segment(self, df):
         df = df.pivot_table(index='date', columns=['outcome'], values='num').fillna(0)
         df = df.resample('D').asfreq().fillna(0)
         df = df.rolling(365).sum().dropna()
         df = df.loc[:datetime.datetime.now(), :]
         df.columns.name = None
-        return df.reset_index()  
-
-
+        return df.reset_index()
 
 
 class DashData:
     def __init__(self, use_pg=False):
-        sqlite_file='/tmp/dash_play.sqlite'
+        sqlite_file = '/tmp/dash_play.sqlite'
         if use_pg:
             1/0
             self.mm = ezr.MiniModelPG(overwrite=False, read_only=False)
@@ -919,23 +883,22 @@ class DashData:
         ]
 
     def _enable_caches(self):
-            logger.info('enabling caches')
-            gtm.PipeStats.enable_pickle_cache()
-            CSExpansion.enable_pickle_cache()
-            ARRGetter.enable_pickle_cache()
-            CSGetter.enable_pickle_cache()
+        logger.info('enabling caches')
+        gtm.PipeStats.enable_pickle_cache()
+        CSExpansion.enable_pickle_cache()
+        ARRGetter.enable_pickle_cache()
+        CSGetter.enable_pickle_cache()
 
     def _disable_caches(self):
-            logger.info('disabling caches')
-            gtm.PipeStats.disable_pickle_cache()
-            CSExpansion.disable_pickle_cache()
-            ARRGetter.disable_pickle_cache()
-            CSGetter.disable_pickle_cache()
+        logger.info('disabling caches')
+        gtm.PipeStats.disable_pickle_cache()
+        CSExpansion.disable_pickle_cache()
+        ARRGetter.disable_pickle_cache()
+        CSGetter.disable_pickle_cache()
 
     def _clear_caches(self):
-            logger.info('clearing caches')
-            gtm.PipeStats.clear_all_default_pickle_cashes()
-
+        logger.info('clearing caches')
+        gtm.PipeStats.clear_all_default_pickle_cashes()
 
     def run(self):
         try:
@@ -950,8 +913,6 @@ class DashData:
             self._disable_caches()
             self._clear_caches()
 
-
-
     def _save_frame(self, name, df, save_index=True):
         if save_index:
             df = df.reset_index(drop=False)
@@ -961,7 +922,7 @@ class DashData:
         self.mm.upsert(name, ['date'], dfs)
 
     def process_arr_time_series(self):
-        df =  ARRGetter(starting=None, ending_exclusive=None).df
+        df = ARRGetter(starting=None, ending_exclusive=None).df
         self._save_frame('dash_arr_time_series', df)
 
     def process_sales_progress(self):
@@ -1019,8 +980,6 @@ class DashData:
         self._save_frame('dash_contract_months', getter.df_contract_months)
         self._save_frame('dash_logo_renewals', getter.df_logo_renewals, save_index=False)
 
-
-
     def get_latest(self, name):
         if name not in self.mm.table_names:
             raise ValueError(f'{name} not in {self.mm.table_names}')
@@ -1030,7 +989,7 @@ class DashData:
             data
         FROM
             {name}
-        ORDER BY 
+        ORDER BY
             date DESC
         LIMIT 1
         """)
@@ -1045,7 +1004,7 @@ class DashData:
             date
         FROM
             {name}
-        ORDER BY 
+        ORDER BY
             date DESC
         LIMIT 1
         """)
