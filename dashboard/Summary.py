@@ -1,20 +1,3 @@
-import streamlit as st
-# from streamlit import caching
-import gtmarket as gtm
-import pandas as pd
-import numpy as np
-import fleming
-import datetime
-import copy
-import locale
-locale.setlocale(locale.LC_ALL, 'en_US')
-import easier as ezr
-from dateutil.relativedelta import relativedelta
-import holoviews as hv
-import datetime
-import itertools
-
-import dash_lib as dl
 from dash_lib import (
     DashData,
     convert_dataframe,
@@ -24,12 +7,18 @@ from dash_lib import (
     plot_frame,
     get_when,
 )
-
+import datetime
+import fleming
+import holoviews as hv
+import locale
+import numpy as np
+import streamlit as st
+locale.setlocale(locale.LC_ALL, 'en_US')
 
 
 @st.cache
 def get_arr_timeseries(when):
-    df = dl.DashData().get_latest('dash_arr_time_series')
+    df = DashData().get_latest('dash_arr_time_series')
     df.loc[:, 'date'] = df.date.astype(np.datetime64)
     df = df.set_index('date')
     return df
@@ -37,7 +26,7 @@ def get_arr_timeseries(when):
 
 @st.cache
 def get_sales_progress_frames(when):
-    df = dl.DashData().get_latest('dash_sales_progress')
+    df = DashData().get_latest('dash_sales_progress')
     df = df.set_index('index')
     df.index.name = 'Market Segment'
     df_pretty = df.copy()
@@ -46,10 +35,9 @@ def get_sales_progress_frames(when):
     return df, df_pretty
 
 
-
 @st.cache
 def get_process_stats_frames(when):
-    dd = dl.DashData()
+    dd = DashData()
     df_sales = dd.get_latest('dash_sales_stats')
     df_stage_wr = dd.get_latest('dash_sales_stats_stage_win_rate')
     df_arr = dd.get_latest('dash_sales_stats_arr')
@@ -60,12 +48,8 @@ def get_process_stats_frames(when):
     return df_sales, df_stage_wr, df_arr
 
 
-
-
 def plot_arr_timeseries():
     today = fleming.floor(datetime.datetime.now())
-    ending_exclusive = pd.Timestamp('1/1/2023')
-    ending_inclusive = ending_exclusive - relativedelta(days=1)
 
     df = get_arr_timeseries(get_when()) / 1e6
 
@@ -79,8 +63,7 @@ def plot_arr_timeseries():
     # return hv.Overlay([c1, c2, c3]).options(legend_position='top')
 
 
-    
-dfprog_download, dfprog =  get_sales_progress_frames(get_when())        
+dfprog_download, dfprog = get_sales_progress_frames(get_when())
 
 # # The "when" argument dictates when the cache automatically resets
 df_sales, df_stage_wr, df_arr = get_process_stats_frames(get_when())
@@ -88,13 +71,15 @@ dfarr = get_arr_timeseries(get_when())
 
 
 expected_arr = dfarr.iloc[-1].sum().round()
-expected_arr = float_to_dollars(expected_arr) 
+expected_arr = float_to_dollars(expected_arr)
 
 st.title('GTM Summary Statistics')
+
 
 @st.cache
 def get_latest_date(when):
     return DashData().get_latest_time()
+
 
 as_of = get_latest_date(get_when())
 as_of = as_of.strftime("%B %d, %Y")
@@ -125,11 +110,11 @@ with st.expander("See Table"):
 st.markdown('---')
 st.markdown('## YTD Sales Progress')
 with st.expander("See explanation"):
-     st.write("""
-         This is how progress on our sales numbers breaks down for the year.  For each market segment
-         you can see how much we've won YTD, how much we have forecasted to win for the remainder of the
-         year, and what that totals to.  Finally, you have the total revenue won and remaining (forecast).
-     """)
+    st.write("""
+        This is how progress on our sales numbers breaks down for the year.  For each market segment
+        you can see how much we've won YTD, how much we have forecasted to win for the remainder of the
+        year, and what that totals to.  Finally, you have the total revenue won and remaining (forecast).
+    """)
 st.table(dfprog)
 
 st.download_button(
@@ -142,26 +127,26 @@ st.download_button(
 st.markdown('---')
 st.markdown('### SalesProcess Metrics')
 with st.expander("See explanation"):
-     st.write("""
-        The statistics in this table represent the most recent estimates of their corresponding metrics.
-        The end goal is to assign a dollar value the total SDR activity in any given month.  Below are
-        details about how the different columns are computed
-        * **SALS / month:** The number of SALS created in the last 30 days
-        * **SAL⮕SQL:** The rolling-90 day average of SAL to SQL conversion as of 30 days ago. (It takes 30 days to "bake".)
-        * **SQL⮕Won:** The rolling-365 day average of SQL to Closed-Won as of 90 days ago. (It takes 90 days to "bake".)
-        * **SAL⮕Won:** The rolling-365 day average of SAL to Closed-Won as of 90 days ago. (It takes 90 days to "bake".)
-        This is the end-to-end conversion rate of our sales funnel.
-        * **Days to Win:** This is the average number of days it takes for an opportunity to move from SAL to Closed-Won.
-        This statistic also comes with a baking time.  We look at all opps closed in the 365 days ending 90 days ago.
-        We then average the number of days those opps stayed open.
-        * **ACV:** This is the average ACV computed over all currently active customers.
-        * **SAL Val:** This is the value of a single SAL.  It is computed by multiplying the average deal size by the
-                    expected SAL win rate.
-        * **SQL Val:** This is the value of a single SAL.  It is computed by multiplying the average deal size by the
-                    expected SQL win rate.
-        * **SAL Value / Month:** This is the average value being generated by the SDR team per month.  It is just the 
-                                number of SALS we have generated over the past thirty days multiplied by their average ACV.
-     """)
+    st.write("""
+       The statistics in this table represent the most recent estimates of their corresponding metrics.
+       The end goal is to assign a dollar value the total SDR activity in any given month.  Below are
+       details about how the different columns are computed
+       * **SALS / month:** The number of SALS created in the last 30 days
+       * **SAL⮕SQL:** The rolling-90 day average of SAL to SQL conversion as of 30 days ago. (30 days to "bake".)
+       * **SQL⮕Won:** The rolling-365 day average of SQL to Closed-Won as of 90 days ago. (90 days to "bake".)
+       * **SAL⮕Won:** The rolling-365 day average of SAL to Closed-Won as of 90 days ago. (90 days to "bake".)
+       This is the end-to-end conversion rate of our sales funnel.
+       * **Days to Win:** This is the average number of days it takes for an opportunity to move from SAL to Closed-Won.
+       This statistic also comes with a baking time.  We look at all opps closed in the 365 days ending 90 days ago.
+       We then average the number of days those opps stayed open.
+       * **ACV:** This is the average ACV computed over all currently active customers.
+       * **SAL Val:** This is the value of a single SAL.  It is computed by multiplying the average deal size by the
+                   expected SAL win rate.
+       * **SQL Val:** This is the value of a single SAL.  It is computed by multiplying the average deal size by the
+                   expected SQL win rate.
+       * **SAL Value / Month:** This is the average value being generated by the SDR team per month.  It is just the
+                        number of SALS we have generated over the past thirty days multiplied by their average ACV.
+    """)
 st.table(df_sales)
 st.download_button(
     label='Download CSV',
@@ -172,12 +157,12 @@ st.download_button(
 
 st.markdown('### By Stage')
 with st.expander("See explanation"):
-     st.write("""
-        These are estimates of our win rate by stage.  Baking time is an imporant consideration for these.
-        For each market segment the win rate was computed by looking at all opps closed (won or lost) in the
-        365 days ending 90 days ago.  We search for all closed opps that passed through a given stage.  Once
-        identified, we compute the fraction of these that were won, and use that as our estimate.
-     """)
+    st.write("""
+       These are estimates of our win rate by stage.  Baking time is an imporant consideration for these.
+       For each market segment the win rate was computed by looking at all opps closed (won or lost) in the
+       365 days ending 90 days ago.  We search for all closed opps that passed through a given stage.  Once
+       identified, we compute the fraction of these that were won, and use that as our estimate.
+    """)
 st.table(df_stage_wr)
 st.download_button(
     label='Download CSV',
@@ -187,37 +172,35 @@ st.download_button(
 )
 
 
-    
-
 st.markdown('---')
 st.markdown('## CS Summary')
 
 with st.expander("See explanation"):
-     st.markdown("""
-        This table presents statistics about our current customer base. 
-        Below are descriptions of each column. For each customer, compute two numbers,
-        `arr_then` (the amount they were paying us a year ago) and `arr_now` the amount they 
-        are paying us today. When you see the `sum` function below, understand that it is the
-        sum over all customers.
-        * **Current ARR:** `sum(arr_now)` The total ARR currently under contract.  This sums up the MRR
-                           for all orders starting today or before and ending in the future.
-                           The sum is multiplied by 12 to convert to ARR.
-        * **12-month Gross Retention:** `sum(min(arr_then, arr_now)) / sum(arr_then)`. This is the fraction 
-            of revenue that customers continue to pay us one year later (ignoring expansion).
-        * **12-month Expansion:** `sum(max(arr_now - arr_then, 0)) / sum(arr_then)`. This is the fraction
-            by which customers expanded their revenue with us.  It is a number that is greater than or equal to zero,
-            never negative.
-        * **12-month NDR:** `sum(arr_now) / sum(arr_then)`.   We define NDR as the all-inclusive ratio of what
-            customers are paying us now with respect to what they were paying us a year ago. Let's make some definitions.
-        * **Value / Month** This is am estimate of the monthly change in ARR of the average customer in market segment. 
-            Here is how we compute it.
-            * $f_a$ is the fraction of revenue compared to a year ago.  It's just annual NDR.
-            * $f_m$ is the fraction of revenue compared to a month ago.  It's just monthly NDR.
-            * Mathematically, we know that $f_a = f_m^{12}$ or $f_m=f_a^\\frac{1}{12}$
-            * Defining $R$ as the current revenue, the estimated change of revenue for 
-              any month should be $\Delta = R(f_m - 1)= R \\left(f_a^\\frac{1}{12} - 1\\right)$
-            * But, since $f_a$ is just the annual NDR, and $R$ is ARR, we come to the final formula for value per month
-                * $\\textbf{Value / Month} = \\textbf{ARR}\\left(\\textbf{NDR}^\\frac{1}{12} - 1\\right)$
+    st.markdown("""
+       This table presents statistics about our current customer base.
+       Below are descriptions of each column. For each customer, compute two numbers,
+       `arr_then` (the amount they were paying us a year ago) and `arr_now` the amount they
+       are paying us today. When you see the `sum` function below, understand that it is the
+       sum over all customers.
+       * **Current ARR:** `sum(arr_now)` The total ARR currently under contract.  This sums up the MRR
+                          for all orders starting today or before and ending in the future.
+                          The sum is multiplied by 12 to convert to ARR.
+       * **12-month Gross Retention:** `sum(min(arr_then, arr_now)) / sum(arr_then)`. This is the fraction
+           of revenue that customers continue to pay us one year later (ignoring expansion).
+       * **12-month Expansion:** `sum(max(arr_now - arr_then, 0)) / sum(arr_then)`. This is the fraction
+           by which customers expanded their revenue with us.  It is a number that is greater than or equal to zero,
+           never negative.
+       * **12-month NDR:** `sum(arr_now) / sum(arr_then)`.   We define NDR as the all-inclusive ratio of what
+           customers are paying us now with respect to what they were paying us a year ago. Let's make some definitions.
+       * **Value / Month** This is am estimate of the monthly change in ARR of the average customer in market segment.
+           Here is how we compute it.
+           * $f_a$ is the fraction of revenue compared to a year ago.  It's just annual NDR.
+           * $f_m$ is the fraction of revenue compared to a month ago.  It's just monthly NDR.
+           * Mathematically, we know that $f_a = f_m^{12}$ or $f_m=f_a^\\frac{1}{12}$
+           * Defining $R$ as the current revenue, the estimated change of revenue for
+             any month should be $\Delta = R(f_m - 1)= R \\left(f_a^\\frac{1}{12} - 1\\right)$
+           * But, since $f_a$ is just the annual NDR, and $R$ is ARR, we come to the final formula for value per month
+               * $\\textbf{Value / Month} = \\textbf{ARR}\\left(\\textbf{NDR}^\\frac{1}{12} - 1\\right)$
 
      """)
 
