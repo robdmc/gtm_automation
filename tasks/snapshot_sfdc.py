@@ -8,8 +8,7 @@ from rocketry import Rocketry
 import easier as ezr
 
 # Will want to write to logs for daemon process
-logger = ezr.get_logger('snapper')
-app = Rocketry()
+logger = ezr.get_logger('snap_sfdc')
 
 
 class ObjectSnapper:
@@ -70,7 +69,7 @@ class ObjectSnapper:
         self._create_file()
 
 
-def snap():
+def run():
     # Set this to True when debugging to minimize salesforce hits
     use_cache = False
 
@@ -93,32 +92,3 @@ def snap():
             # If an error happened, tell the log about it
             logger.exception(f'date: {today} error for: {object_name}\n')
 
-
-@app.task('every 6 hours')
-def snap_runner():
-    """
-    Define a task to run in deamon mode
-    """
-    snap()
-
-
-@click.command()
-@click.option(
-    '-d', '--daemon',
-    default=False,
-    is_flag=True,
-    help='Run in daemon mode with scheduled downloads')
-def main(daemon):
-    """
-    Handle the cli arguments and run in the appropriate mode
-    """
-    if daemon:
-        logger.info('Starting daemon mode')
-        app.run()
-    else:
-        logger.info('Running single snapshot')
-        snap()
-
-
-if __name__ == '__main__':
-    main()
