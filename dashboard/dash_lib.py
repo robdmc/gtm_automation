@@ -864,12 +864,12 @@ class CSGetter(ezr.pickle_cache_mixin):
 
 
 class DashData:
-    def __init__(self, use_pg=False):
+    def __init__(self, use_pg=USE_PG):
         sqlite_file = '/tmp/dash_play.sqlite'
         if use_pg:
-            1/0
             self.mm = ezr.MiniModelPG(overwrite=False, read_only=False)
         else:
+            1/0
             self.mm = ezr.MiniModelSqlite(file_name=sqlite_file, overwrite=False, read_only=False)
 
         self.methods = [

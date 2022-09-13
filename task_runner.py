@@ -48,8 +48,9 @@ import importlib
 
 def run():
     module_list = [
-        'tasks.snapshot_sfdc',
-        'tasks.snapshot_predictor',
+        # 'tasks.snapshot_sfdc',
+        # 'tasks.snapshot_predictor',
+        'tasks.snapshot_dash_data',
     ]
     for module_name in module_list:
         mod = importlib.import_module(module_name)

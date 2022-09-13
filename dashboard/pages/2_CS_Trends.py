@@ -16,6 +16,7 @@ locale.setlocale(locale.LC_ALL, 'en_US')
 hv.extension('bokeh')
 opts.defaults(opts.Area(width=800, height=400), tools=[])
 opts.defaults(opts.Curve(width=800, height=400, tools=['hover']))
+from hvplot import pandas
 
 
 @st.cache

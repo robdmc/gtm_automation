@@ -1,19 +1,19 @@
 #! /usr/bin/env python
 
-import dash_lib as dl
+import dashboard.dash_lib as dl
 import datetime
 import pandas as pd
 import time
+import easier as ezr
 
 
-print('hello')
+logger = ezr.get_logger('dash_data_runner')
 
-# import pdb; pdb.set_trace()
-dd = dl.DashData()
 
-#dd.run()
-df = dd.get_latest('dash_logo_renewals')
-print(df.to_string(index=False))
+def run():
+    dd = dl.DashData()
+    dd.run()
+    logger.info('sucess all dashboard data')
 
 
 
