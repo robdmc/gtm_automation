@@ -37,6 +37,3 @@ secrets:
 
 # Run this to kill all build images
 # docker images | grep dashboard_ | awk '{print $3}' | xargs docker rmi
-
-
-
