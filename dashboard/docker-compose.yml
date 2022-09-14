@@ -1,12 +1,13 @@
 version: "3.9"
 services:
   base: &base
-     build: .
+     image: "robdmc/gtm"
+     #build: .
      secrets:
        - app_secrets
   shell:
     <<: *base
-    container_name: dapp
+    #container_name: dapp
     ports:
       - "8501:8501"
     command: >
@@ -20,14 +21,12 @@ services:
 
   jupyter:
     <<: *base
-    container_name: jupyter
+    #container_name: jupyter
     ports:
       - "8888:8888"
 
     volumes:
       - ./notebooks:/app/notebooks:delegated
-
-
 
     command: >
       bash -c "source /run/secrets/app_secrets && jupyter notebook --allow-root --port=8888 --no-browser --ip=0.0.0.0"
