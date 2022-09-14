@@ -9,10 +9,11 @@ ENV LANGUAGE en_US.UTF-8
 
 WORKDIR /app
 
-#COPY requirements.txt ./
-COPY . .
+COPY requirements.txt .
+COPY Summary.py .
+COPY pages .
+COPY dash_lib.py .
 RUN pip install -U pip
 RUN pip install --no-cache-dir -r requirements.txt
 
-# COPY . .
 

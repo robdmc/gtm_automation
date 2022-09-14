@@ -19,6 +19,17 @@ services:
     command: >
       bash -c "source /run/secrets/app_secrets && streamlit run Summary.py"
 
+  tasks:
+    <<: *base
+    volumes:
+      - ~/data:/root/data
+      - ./logs:/root/logs
+    command: >
+      bash -c "source /run/secrets/app_secrets && bash"
+
+    command: >
+      bash -c "source /run/secrets/app_secrets && bash"
+
   jupyter:
     <<: *base
     #container_name: jupyter
