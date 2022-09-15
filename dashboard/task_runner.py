@@ -10,20 +10,9 @@ logger = ezr.get_logger('task_runner')
 app = Rocketry()
 
 
-
-
-
-# @app.task('every 6 hours')
-# def snap_runner():
-#     """
-#     Define a task to run in deamon mode
-#     """
-#     snap()
-
-
-# @app.task('every 3 hours')
-@app.task('every 6 minutes')
+@app.task('every 3 hours')
 def run():
+    logger.info('Starting task batch -----')
     module_list = [
         'tasks.snapshot_sfdc',
         'tasks.snapshot_predictor',
@@ -32,6 +21,7 @@ def run():
     for module_name in module_list:
         mod = importlib.import_module(module_name)
         mod.run()
+    logger.info('Finished task batch -----')
 
 
 @click.command()

@@ -10,6 +10,7 @@ shell \
 app \
 app_daemon\
 tasks\
+tasks_daemon\
 down
 
 help:  ## Print the help documentation
@@ -36,6 +37,9 @@ app: ## start streamlit app
 
 tasks: ## start streamlit app
 	docker-compose run --rm tasks
+
+tasks_daemon: ## start streamlit app in daemon mode
+	docker-compose up -d tasks_daemon
 
 app_daemon: ## start streamlit app as daemon
 	docker-compose up -d app
