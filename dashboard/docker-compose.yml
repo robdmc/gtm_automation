@@ -10,6 +10,10 @@ services:
     #container_name: dapp
     ports:
       - "8501:8501"
+    volumes:
+      - ~/data:/root/data
+      - ./logs:/root/logs
+      - ./notebooks:/app/notebooks:delegated
     command: >
       bash -c "source /run/secrets/app_secrets && bash"
   app:
@@ -24,11 +28,19 @@ services:
     volumes:
       - ~/data:/root/data
       - ./logs:/root/logs
+      - ./notebooks:/app/notebooks:delegated
     command: >
-      bash -c "source /run/secrets/app_secrets && bash"
+      bash -c "source /run/secrets/app_secrets && python task_runner.py > ~/logs/tasks.log 2>&1"
 
+  tasks_daemon:
+    <<: *base
+    volumes:
+      - ~/data:/root/data
+      - ./logs:/root/logs
+      - ./notebooks:/app/notebooks:delegated
     command: >
-      bash -c "source /run/secrets/app_secrets && bash"
+      bash -c "source /run/secrets/app_secrets && python task_runner.py -d > ~/logs/tasks.log 2>&1"
+
 
   jupyter:
     <<: *base
@@ -37,10 +49,13 @@ services:
       - "8888:8888"
 
     volumes:
+      - ~/data:/root/data
+      - ./logs:/root/logs
       - ./notebooks:/app/notebooks:delegated
 
     command: >
       bash -c "source /run/secrets/app_secrets && jupyter notebook --allow-root --port=8888 --no-browser --ip=0.0.0.0"
+
 secrets:
   app_secrets:
     file: ./secrets.sh

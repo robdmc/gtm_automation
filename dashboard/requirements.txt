@@ -1,3 +1,4 @@
+cvxpy
 daiquiri
 dataset
 easier
@@ -11,6 +12,7 @@ jupyter
 pandas
 pdbpp
 psycopg2
+rocketry
 scipy
 simple-salesforce
 streamlit

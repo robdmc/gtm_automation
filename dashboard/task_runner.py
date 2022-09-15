@@ -21,7 +21,8 @@ app = Rocketry()
 #     snap()
 
 
-@app.task('every 3 hours')
+# @app.task('every 3 hours')
+@app.task('every 6 minutes')
 def run():
     module_list = [
         'tasks.snapshot_sfdc',
