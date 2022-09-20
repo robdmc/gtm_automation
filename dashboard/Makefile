@@ -50,7 +50,7 @@ down: ## stop all docker-compose services
 
 nuke: ## Completely reset docker
 	docker-compose down
-	docker images -q | xargs docker rmi -f || 1
-	docker ps -aq | xargs docker rm || 1
-	docker system prune --all || 1
+	-docker images -q | xargs docker rmi -f
+	-docker ps -aq | xargs docker rm
+	-docker system prune --all
 
