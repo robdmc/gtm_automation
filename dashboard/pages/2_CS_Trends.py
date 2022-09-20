@@ -98,7 +98,15 @@ class CSPlotter:
         units = '%'
         final_values = self._get_final_values(df, col, multiplier=-1)
         c_churn = self._plot_time_series(df, col, label, final_values, units=units, multiplier=-1)
-        return c_ndr, c_ex, c_ren, c_red, c_churn
+
+        col = 'gross_churn_pct'
+        label = 'Rolling 12-month Gross Churn (%)'
+        units = '%'
+        final_values = self._get_final_values(df, col, multiplier=-1)
+        c_gross_churn = self._plot_time_series(df, col, label, final_values, units=units, multiplier=-1)
+
+
+        return c_ndr, c_ex, c_ren, c_red, c_churn, c_gross_churn
 
     def _plot_logo_retention_for_segment(self, df, segment, color):
         df = df[df.market_segment == segment].copy()
@@ -134,13 +142,16 @@ class CSPlotter:
 as_of = get_latest_date(get_when())
 df_metrics, df_acv, df_months, df_logo_retention = get_frames(get_when())
 
+st.write(df_metrics.head())
+st.write(df_metrics.variable.value_counts())
+
 
 st.title('CS Trends')
 st.markdown(f'### as of {as_of}')
 plotter = CSPlotter(df_metrics, df_acv, df_months, df_logo_retention)
 
 
-c_ndr, c_ex, c_ren, c_red, c_churn = plotter.get_retention_plots()
+c_ndr, c_ex, c_ren, c_red, c_churn, c_gross_churn = plotter.get_retention_plots()
 c_logo_ret = plotter.get_logo_rention_plot()
 
 st.markdown('---')
@@ -173,7 +184,7 @@ display(c_ex)
 
 st.markdown('---')
 st.markdown('## Gross Churn')
-display(c_churn)
+display(c_gross_churn)
 
 
 st.markdown('---')
