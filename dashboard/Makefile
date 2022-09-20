@@ -45,6 +45,8 @@ tasks_daemon: ## start streamlit app in daemon mode
 app_daemon: ## start streamlit app as daemon
 	docker-compose up -d app
 
+daemon_all: app_daemon tasks_daemon ## Start all daemon services
+
 down: ## stop all docker-compose services
 	docker-compose down
 
