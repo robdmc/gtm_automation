@@ -142,10 +142,6 @@ class CSPlotter:
 as_of = get_latest_date(get_when())
 df_metrics, df_acv, df_months, df_logo_retention = get_frames(get_when())
 
-st.write(df_metrics.head())
-st.write(df_metrics.variable.value_counts())
-
-
 st.title('CS Trends')
 st.markdown(f'### as of {as_of}')
 plotter = CSPlotter(df_metrics, df_acv, df_months, df_logo_retention)
