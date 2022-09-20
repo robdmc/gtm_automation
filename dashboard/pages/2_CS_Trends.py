@@ -54,8 +54,10 @@ class CSPlotter:
     def _plot_time_series(self, df, col, label, final_values, units='', multiplier=1):
         name_mapper = {k: f'{k} {v:0.1f}{units}'.strip() for (k, v) in final_values.items()}
         dfx = df[df.variable == col].pivot_table(index='date', columns='market_segment', values='value', aggfunc=np.sum)
+        cols = sorted(set(dfx.columns) - {'all'}) + ['all']
+        dfx = dfx[cols]
         dfx = multiplier * dfx.rename(columns=name_mapper)
-        # st.write(dfx)
+
         # st.write(dfx.reset_index().dtypes.astype(str))
         c = dfx.hvplot(ylabel=label).options(legend_position='top', show_grid=True)
         return c
