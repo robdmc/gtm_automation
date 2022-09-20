@@ -11,7 +11,8 @@ app \
 app_daemon\
 tasks\
 tasks_daemon\
-down
+down\
+prune
 
 help:  ## Print the help documentation
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
@@ -46,3 +47,10 @@ app_daemon: ## start streamlit app as daemon
 
 down: ## stop all docker-compose services
 	docker-compose down
+
+nuke: ## Completely reset docker
+	docker-compose down
+	docker images -q | xargs docker rmi -f || 1
+	docker ps -aq | xargs docker rm || 1
+	docker system prune --all || 1
+
