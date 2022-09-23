@@ -688,7 +688,7 @@ class CSGetter(ezr.pickle_cache_mixin):
 
         # Get all orders and standardize them
         df = self.op.df_orders[['account_id', 'order_start_date', 'order_ends', 'mrr', 'market_segment']]
-        df.loc[:, 'market_segment'] = [ezr.slugify(s) for s in df.market_segment]
+        df['market_segment'] = [ezr.slugify(s) for s in df.market_segment]
 
         # Create two frames.  One for "now" and one for "then"
         df_now = df[(df.order_start_date <= now) & (df.order_ends >= now)]
