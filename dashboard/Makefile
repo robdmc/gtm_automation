@@ -36,6 +36,12 @@ shell: ## Open a shell in the container
 app: ## start streamlit app
 	docker-compose up app
 
+restart_app: ## Restart the app to reset cache
+	-docker-compose stop app
+	docker-compose up -d app
+
+
+
 tasks: ## start streamlit app
 	docker-compose run --rm tasks
 
