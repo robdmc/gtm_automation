@@ -24,7 +24,7 @@ USE_PG = True
 
 
 def get_when():
-    return fleming.floor(datetime.datetime.now(), hour=1)
+    return fleming.floor(datetime.datetime.now(), minute=15)
 
 
 def display(hv_obj):
@@ -616,13 +616,13 @@ class SALGetter:
 
     @ezr.pickle_cached_container()
     def df_daily_actuals(self):
-        starting, ending = pd.Timestamp('1/1/2022'), fleming.floor(datetime.datetime.now(), day=1)
+        starting, ending = pd.Timestamp('1/1/2021'), fleming.floor(datetime.datetime.now(), day=1)
 
         ps = self.ps
         dfa = ps.df_new_biz
         dfa = dfa[['created_date', 'market_segment']]
         dfa['num_opps'] = 1
-        dfa = dfa[dfa.created_date >= '1/1/2022']
+        dfa = dfa[dfa.created_date >= '1/1/2021']
         dfa = dfa.pivot_table(index='created_date', columns='market_segment', values='num_opps', aggfunc=np.sum)
         dfa = dfa.drop('unknown', axis=1, errors='ignore').fillna(0)
         ind = pd.date_range(starting, ending, freq='D', name='created_date')
@@ -869,7 +869,7 @@ class DashData:
         if use_pg:
             self.mm = ezr.MiniModelPG(overwrite=False, read_only=False)
         else:
-            1/0
+            1 / 0
             self.mm = ezr.MiniModelSqlite(file_name=sqlite_file, overwrite=False, read_only=False)
 
         self.methods = [
@@ -963,7 +963,7 @@ class DashData:
 
     def process_sal_creation_rate(self):
         getter = SALGetter()
-        df = getter.get_rolling_created(rolling_days=30, smoothing_degree=15)
+        df = getter.get_rolling_created(rolling_days=30, smoothing_degree=60)
         df.index.name = 'date'
         self._save_frame('dash_sal_creation_rate', df)
 

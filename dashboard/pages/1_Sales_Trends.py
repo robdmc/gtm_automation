@@ -64,7 +64,7 @@ def get_plotting_frames(when):
 
     def clean_it(df):
         df = df.rename(columns={'index': 'date'})
-        df.loc[:, 'date'] = df.loc[:, 'date'].astype(np.datetime64)
+        df['date'] = df.loc[:, 'date'].astype(np.datetime64)
         df = df.set_index('date')
         return df
 
@@ -79,7 +79,7 @@ def get_plotting_frames(when):
 def get_sal_frame(when):
     dd = DashData()
     df = dd.get_latest('dash_sal_creation_rate')
-    df.loc[:, 'date'] = df.date.astype(np.datetime64)
+    df['date'] = df.date.astype(np.datetime64)
     df = df.set_index('date')
     return df
 
@@ -92,7 +92,7 @@ def get_conversion_frames(when):
     df_sal2won = dd.get_latest('dash_sal2won')
 
     def clean_it(df):
-        df.loc[:, 'date'] = df.loc[:, 'date'].astype(np.datetime64)
+        df['date'] = df.loc[:, 'date'].astype(np.datetime64)
         df = df.set_index('date')
         return df
 

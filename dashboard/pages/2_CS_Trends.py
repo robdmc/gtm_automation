@@ -33,7 +33,7 @@ def get_frames(when):
     df_logo_retention = dd.get_latest('dash_logo_renewals')
 
     def transform_to_date(df, col):
-        df.loc[:, col] = df.loc[:, col].astype(np.datetime64)
+        df[col] = df.loc[:, col].astype(np.datetime64)
         return df
 
     df_metrics = transform_to_date(df_metrics, 'date')
@@ -107,12 +107,11 @@ class CSPlotter:
         final_values = self._get_final_values(df, col, multiplier=-1)
         c_gross_churn = self._plot_time_series(df, col, label, final_values, units=units, multiplier=-1)
 
-
         return c_ndr, c_ex, c_ren, c_red, c_churn, c_gross_churn
 
     def _plot_logo_retention_for_segment(self, df, segment, color):
         df = df[df.market_segment == segment].copy()
-        df.loc[:, 'date'] = df.date.astype(np.datetime64)
+        df['date'] = df.date.astype(np.datetime64)
         df = df.set_index('date')
         dist = stats.beta(a=df.retained.values + 1, b=df.churned.values + 1)
         df['lower'], df['best'], df['upper'] = dist.ppf(.1), dist.ppf(.5), dist.ppf(.9)

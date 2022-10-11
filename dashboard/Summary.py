@@ -19,7 +19,7 @@ locale.setlocale(locale.LC_ALL, 'en_US')
 @st.cache
 def get_arr_timeseries(when):
     df = DashData().get_latest('dash_arr_time_series')
-    df.loc[:, 'date'] = df.date.astype(np.datetime64)
+    df['date'] = df.date.astype(np.datetime64)
     df = df.set_index('date')
     return df
 
