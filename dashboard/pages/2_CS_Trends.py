@@ -10,6 +10,7 @@ from dash_lib import (
     DashData,
     display,
     get_when,
+    convert_dataframe,
 )
 locale.setlocale(locale.LC_ALL, 'en_US')
 
@@ -51,14 +52,22 @@ class CSPlotter:
         self.df_months = df_months
         self.df_logo_retention = df_logo_rentention
 
-    def _plot_time_series(self, df, col, label, final_values, units='', multiplier=1):
+    def _get_plot_time_series_frame(self, df, col, label, final_values, units='', multiplier=1):
+
+        #TODO:  Need to clean this method up.  Has unneeded args, but I'm in a hurry right now
+
         name_mapper = {k: f'{k} {v:0.1f}{units}'.strip() for (k, v) in final_values.items()}
         dfx = df[df.variable == col].pivot_table(index='date', columns='market_segment', values='value', aggfunc=np.sum)
         cols = sorted(set(dfx.columns) - {'all'}) + ['all']
         dfx = dfx[cols]
         dfx = multiplier * dfx.rename(columns=name_mapper)
+        return dfx
 
-        # st.write(dfx.reset_index().dtypes.astype(str))
+        # c = dfx.hvplot(ylabel=label).options(legend_position='top', show_grid=True)
+        # return c
+
+    def _plot_time_series(self, df, col, label, final_values, units='', multiplier=1):
+        dfx = self._get_plot_time_series_frame(df, col, label, final_values, units, multiplier)
         c = dfx.hvplot(ylabel=label).options(legend_position='top', show_grid=True)
         return c
 
@@ -66,6 +75,65 @@ class CSPlotter:
         dfx = df[df.variable == col].pivot_table(index='date', columns='market_segment', values='value', aggfunc=np.sum)
         out = (multiplier * dfx.iloc[-1, :]).to_dict()
         return out
+
+    @ezr.cached_container
+    def df_ndr(self):
+        df = self.df_metrics
+        col = 'ndr'
+        label = 'Rolling 12-month Net-Dollar-Retention (%)'
+        units = '%'
+        final_values = self._get_final_values(df, col)
+        return self._get_plot_time_series_frame(df, col, label, final_values, units=units)
+
+    @ezr.cached_container
+    def df_expansion_pct(self):
+        df = self.df_metrics
+
+        col = 'expanded_pct'
+        label = 'Rolling 12-month Expansion APR (%)'
+        units = '%'
+        final_values = self._get_final_values(df, col)
+        return self._get_plot_time_series_frame(df, col, label, final_values, units=units)
+
+    @ezr.cached_container
+    def df_renewed_pct(self):
+        df = self.df_metrics
+
+        col = 'renewed_pct'
+        label = 'Rolling 12-month Dollar Retention Rate (%)'
+        units = '%'
+        final_values = self._get_final_values(df, col)
+        return self._get_plot_time_series_frame(df, col, label, final_values, units=units)
+
+    @ezr.cached_container
+    def df_reduced_pct(self):
+        df = self.df_metrics
+
+        col = 'reduced_pct'
+        label = 'Rolling 12-month Reduction Rate (%)'
+        units = '%'
+        final_values = self._get_final_values(df, col, multiplier=-1)
+
+        return self._get_plot_time_series_frame(df, col, label, final_values, units=units)
+
+    @ezr.cached_container
+    def df_churned_pct(self):
+        df = self.df_metrics
+
+        col = 'churned_pct'
+        label = 'Rolling 12-month Churn Rate (%)'
+        units = '%'
+        final_values = self._get_final_values(df, col, multiplier=-1)
+        return self._get_plot_time_series_frame(df, col, label, final_values, units=units)
+
+    @ezr.cached_container
+    def df_gross_churn_pct(self):
+        df = self.df_metrics
+        col = 'gross_churn_pct'
+        label = 'Rolling 12-month Gross Churn (%)'
+        units = '%'
+        final_values = self._get_final_values(df, col, multiplier=-1)
+        return self._get_plot_time_series_frame(df, col, label, final_values, units=units)
 
     def get_retention_plots(self):
 
@@ -111,7 +179,7 @@ class CSPlotter:
 
     def _plot_logo_retention_for_segment(self, df, segment, color):
         df = df[df.market_segment == segment].copy()
-        df['date'] = df.date.astype(np.datetime64)
+        df['date'] = df.date.astype('datetime64[ns]')
         df = df.set_index('date')
         dist = stats.beta(a=df.retained.values + 1, b=df.churned.values + 1)
         df['lower'], df['best'], df['upper'] = dist.ppf(.1), dist.ppf(.5), dist.ppf(.9)
@@ -143,10 +211,18 @@ class CSPlotter:
 as_of = get_latest_date(get_when())
 df_metrics, df_acv, df_months, df_logo_retention = get_frames(get_when())
 
+
 st.title('CS Trends')
 st.markdown(f'### as of {as_of}')
 plotter = CSPlotter(df_metrics, df_acv, df_months, df_logo_retention)
 
+
+#TODO: Might want to refactor for putting these behind a cache
+df_ndr = plotter.df_ndr
+df_expansion_pct = plotter.df_expansion_pct
+df_reduced_pct = plotter.df_reduced_pct
+df_churned_pct = plotter.df_churned_pct
+df_gross_churn_pct = plotter.df_gross_churn_pct
 
 c_ndr, c_ex, c_ren, c_red, c_churn, c_gross_churn = plotter.get_retention_plots()
 c_logo_ret = plotter.get_logo_rention_plot()
@@ -173,15 +249,42 @@ with st.expander("See explanation"):
             * Plot a point on the graph for the `now` date with this NDR value.
         """)
 display(c_ndr)
+with st.expander("See Table"):
+    dfd = df_ndr
+    st.download_button(
+        label='Download CSV',
+        data=convert_dataframe(dfd),
+        file_name='ndr.csv',
+        mime='text/csv',
+    )
+    st.table(dfd)
 
 
 st.markdown('---')
 st.markdown('## Expansion')
 display(c_ex)
+with st.expander("See Table"):
+    dfd = df_expansion_pct
+    st.download_button(
+        label='Download CSV',
+        data=convert_dataframe(dfd),
+        file_name='expansion.csv',
+        mime='text/csv',
+    )
+    st.table(dfd)
 
 st.markdown('---')
 st.markdown('## Gross Churn')
 display(c_gross_churn)
+with st.expander("See Table"):
+    dfd = -df_gross_churn_pct
+    st.download_button(
+        label='Download CSV',
+        data=convert_dataframe(dfd),
+        file_name='gross_churn.csv',
+        mime='text/csv',
+    )
+    st.table(dfd)
 
 
 st.markdown('---')
@@ -192,6 +295,15 @@ with st.expander("See explanation"):
          These numbers ignore reduced contract values.
     """)
 display(c_churn)
+with st.expander("See Table"):
+    dfd = -df_churned_pct
+    st.download_button(
+        label='Download CSV',
+        data=convert_dataframe(dfd),
+        file_name='churn.csv',
+        mime='text/csv',
+    )
+    st.table(dfd)
 
 st.markdown('---')
 st.markdown('## Revenue Fraction lost to Reduced Accounts')
@@ -200,6 +312,15 @@ with st.expander("See explanation"):
         This is the percentage of our revenue that we lost to customers downsizing.
     """)
 display(c_red)
+with st.expander("See Table"):
+    dfd = -df_reduced_pct
+    st.download_button(
+        label='Download CSV',
+        data=convert_dataframe(dfd),
+        file_name='reduced.csv',
+        mime='text/csv',
+    )
+    st.table(dfd)
 
 
 st.markdown('---')
@@ -230,3 +351,17 @@ with st.expander("See explanation"):
     """)
 
 display(c_logo_ret)
+with st.expander("See Table"):
+    st.markdown('## TODO:')
+    st.markdown('### This table is in raw form. It include the counts of logos retained and churned')
+    st.markdown('When you manually run churn percentages, don\'t expect complete agreement with graph.')
+    st.markdown('The info in the gaph tries to be smart at estimating percentages for small data and')
+    st.markdown('this ends up shifting the rates somewhat.')
+    dfd = df_logo_retention
+    st.download_button(
+        label='Download CSV',
+        data=convert_dataframe(dfd),
+        file_name='logo_rentention.csv',
+        mime='text/csv',
+    )
+    st.table(dfd)
