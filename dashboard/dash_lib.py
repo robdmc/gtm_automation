@@ -560,6 +560,7 @@ class ARRGetter(ezr.pickle_cache_mixin):
         return self.get_arr_history_frame()
 
     def get_prediction_history_frame(self):
+        #TODO: THIS METHOD MIGHT NOT BE USED.
 
         rec_list = []
         for date in pd.date_range('6/2/2022', self.today):
