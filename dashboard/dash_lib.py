@@ -324,7 +324,9 @@ class PredictorGetter:
         return dfw, dff, dfh
 
 
-class NDRGetter:
+class NDRGetter(ezr.pickle_cache_mixin):
+    pkc = ezr.pickle_cache_state('reset')
+    
     def __init__(self):
         self.op = gtm.OrderProducts()
         self.ps = gtm.PipeStats()
@@ -338,7 +340,7 @@ class NDRGetter:
 
         return df
 
-    @ezr.cached_container
+    @ezr.pickle_cached_container()
     def df_metrics(self):
         dates = pd.date_range('1/1/2021', datetime.datetime.now())
 
@@ -434,9 +436,10 @@ class CSExpansion(ezr.pickle_cache_mixin):
         df.columns = df.columns.get_level_values(1)
         return df
 
-    @ezr.cached_container
-    def df_cs_expansion_from_current_orders(self):
+    @ezr.pickle_cached_container()
+    def _df_cs_expansion_from_current_orders_all_time(self):
         dfo = self.ps.op.df_orders
+            
         dfo = dfo[['account_id', 'order_start_date', 'market_segment', 'mrr']]
 
         # Ignore contributions for accounts with open axpansion opps
@@ -447,7 +450,7 @@ class CSExpansion(ezr.pickle_cache_mixin):
         dfo = dfo.groupby(by=['order_start_date', 'market_segment'])[['acv']].sum().unstack('market_segment').fillna(0)
         dfo.columns = [ezr.slugify(c) for c in dfo.columns.get_level_values(1)]
 
-        starting, ending = dfo.index[0], self.ending
+        starting, ending = pd.Timestamp('1/1/2021'), self.today + relativedelta(years=3)
         dates = pd.date_range(starting, ending, name='date')
 
         # Note that in spreading the values of a year, I'm only including first year sales expansion
@@ -456,8 +459,38 @@ class CSExpansion(ezr.pickle_cache_mixin):
         for col in dfo.columns:
             dfo.loc[:, col] = spread_values(dfo.loc[:, col] * self.expansion_rate[col], 1 * 365)
 
-        dfo = dfo.loc[self.today:, :].cumsum()
         return dfo
+
+    @ezr.cached_container
+    def df_cs_expansion_from_current_orders(self):
+        dfo = self._df_cs_expansion_from_current_orders_all_time
+        starting, ending = dfo.index[0], self.ending
+        dfo = dfo.loc[starting:ending, :].cumsum()
+        return dfo
+
+        # dfo = self.ps.op.df_orders
+            
+        # dfo = dfo[['account_id', 'order_start_date', 'market_segment', 'mrr']]
+
+        # # Ignore contributions for accounts with open axpansion opps
+        # dfo = dfo[~dfo.account_id.isin(self.expanding_account_set)]
+
+        # dfo['acv'] = 12 * dfo.mrr
+
+        # dfo = dfo.groupby(by=['order_start_date', 'market_segment'])[['acv']].sum().unstack('market_segment').fillna(0)
+        # dfo.columns = [ezr.slugify(c) for c in dfo.columns.get_level_values(1)]
+
+        # starting, ending = dfo.index[0], self.ending
+        # dates = pd.date_range(starting, ending, name='date')
+
+        # # Note that in spreading the values of a year, I'm only including first year sales expansion
+        # # estimates.  Everything else gets accounted for in NDR
+        # dfo = dfo.reindex(dates).fillna(0)
+        # for col in dfo.columns:
+        #     dfo.loc[:, col] = spread_values(dfo.loc[:, col] * self.expansion_rate[col], 1 * 365)
+
+        # dfo = dfo.loc[self.today:, :].cumsum()
+        # return dfo
 
     @ezr.pickle_cached_container()
     def df_cs_expansion_forecast(self):
