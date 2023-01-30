@@ -48,6 +48,9 @@ def convert_dataframe(df):
 
 
 def plot_frame(df, alpha=1, use_label=True, units='', include_total=True, ylabel='ACV'):  # pragma: no cover
+
+    # import pdb; pdb.set_trace()
+
     import holoviews as hv
     colorcycle = itertools.cycle(ezr.cc.codes)
     c_list = []
@@ -928,8 +931,8 @@ class DashData:
 
     def process_sales_progress(self):
         today = fleming.floor(datetime.datetime.now(), day=1)
-        ending_exclusive = '1/1/2023'
-        since = '1/1/2022'
+        ending_exclusive = '1/1/2024'
+        since = '1/1/2023'
 
         pg = PredictorGetter()
 

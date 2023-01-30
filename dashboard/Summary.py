@@ -51,10 +51,13 @@ def get_process_stats_frames(when):
 def plot_arr_timeseries():
     today = fleming.floor(datetime.datetime.now())
 
+    import pdb; pdb.set_trace()
+
     df = get_arr_timeseries(get_when()) / 1e6
 
     df_past = df.loc[:today]
     df_future = df.loc[today:]
+
 
     c1 = plot_frame(df_past, alpha=1, use_label=False, units='m', include_total=False, ylabel='ARR')
     c2 = plot_frame(df_future, alpha=.5, use_label=True, units='m', include_total=True, ylabel='ARR')
